@@ -1,68 +1,70 @@
 <!DOCTYPE html>
 <html lang="ru">
-  <head>
-    <meta charset="utf-8" />
-    <title>My Cyprus Walk — solid sky</title>
+<head>
+  <meta charset="utf-8" />
+  <title>My Cyprus Walk</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <script src="https://cdn.jsdelivr.net/npm/aframe@1.7.0/dist/aframe.min.js"></script>
 
-    <!-- A-Frame -->
-    <script src="https://cdn.jsdelivr.net/npm/aframe@1.7.0/dist/aframe.min.js"></script>
-  </head>
-  <body>
-    <a-scene loading-screen="dotsColor:#fff">
-      <!-- СПЛОШНОЙ ЦВЕТ НЕБА -->
-      <a-sky color="#c8c8d6"></a-sky>
-      <!-- вечерний фиолетово-сиреневый -->
+  <style>
+    /* Кнопка запуска звука */
+    #start-audio {
+      position: fixed; inset: auto 20px 20px auto;
+      padding: 10px 14px; border-radius: 10px; border: 0;
+      background: #111; color: #fff; font: 600 14px/1.2 system-ui;
+      box-shadow: 0 4px 16px rgba(0,0,0,.2); cursor: pointer; z-index: 10;
+    }
+    #start-audio.hidden { display: none; }
+  </style>
+</head>
+<body>
+<a-scene loading-screen="dotsColor:#fff">
 
-      <!-- Свет (ambient + directional) -->
-      <a-entity light="type: ambient; intensity: 0.35"></a-entity>
-      <a-entity
-        light="type: directional; intensity: 0.6"
-        position="2 4 2"
-      ></a-entity>
+  <!-- Загружаем ассеты (твоё небо + модель улицы) -->
+  <a-assets>
+    <!-- Положи свой файл сюда: assets/images/sky.jpg -->
+    <img id="skyTex" src="assets/images/sky.jpg" crossorigin="anonymous">
 
-      <!-- Камера (рост 1.6 м) -->
-      <a-entity
-        camera
-        look-controls
-        wasd-controls
-        position="0 1.6 5"
-      ></a-entity>
+    <a-asset-item id="street"
+      src="assets/models/Limasol_Street%20(2).glb"></a-asset-item>
+  </a-assets>
 
-      <!-- Ассеты -->
-      <a-assets>
-        <a-asset-item
-          id="street"
-          crossorigin="anonymous"
-          src="https://cdn.glitch.me/924b7adc-60ad-4273-bda4-ac0dba961016/Limasol_Street%20(2).glb?v=1751715786419"
-        >
-        </a-asset-item>
-      </a-assets>
+  <!-- Небо: твоя фотография -->
+  <a-sky src="#skyTex" rotation="0 -90 0"></a-sky>
 
-      <!-- Улица -->
-      <a-entity gltf-model="#street" position="0 0 0"></a-entity>
-    </a-scene>
+  <!-- Свет (чтобы модель не была тёмной) -->
+  <a-entity light="type: ambient; intensity: 0.35"></a-entity>
+  <a-entity light="type: directional; intensity: 0.6" position="2 4 2"></a-entity>
 
-    <!-- Фоновая музыка -->
-    <audio
-      id="amb"
-      crossorigin="anonymous"
-      src="https://cdn.glitch.global/924b7adc-60ad-4273-bda4-ac0dba961016/Analog_Mannequin%20Milk%20Cassette%20X.mp3%20-%20Demo.mp3?v=1751715412939"
-      preload="auto"
-      loop
-    ></audio>
+  <!-- Камера (рост 1.6 м, ходьба WASD / свайп) -->
+  <a-entity camera look-controls wasd-controls position="0 1.6 5"></a-entity>
 
-    <script>
-      /* первый клик/тап — снимаем блокировку автоплея */
-      function unlock() {
-        document
-          .getElementById("amb")
-          .play()
-          .catch(() => {});
-        window.removeEventListener("click", unlock);
-        window.removeEventListener("touchstart", unlock);
-      }
-      window.addEventListener("click", unlock);
-      window.addEventListener("touchstart", unlock);
-    </script>
-  </body>
+  <!-- Модель улицы -->
+  <a-entity gltf-model="#street" position="0 0 0"></a-entity>
+</a-scene>
+
+<!-- Фоновая музыка -->
+<audio id="amb"
+       src="assets/audio/Analog_Mannequin%20Milk%20Cassette%20X.mp3%20-%20Demo.mp3"
+       preload="auto" loop></audio>
+
+<!-- Кнопка запуска звука -->
+<button id="start-audio">🔊 Включить звук</button>
+
+<script>
+  // Первый жест пользователя — запускаем музыку и прячем кнопку
+  const btn = document.getElementById('start-audio');
+  const amb = document.getElementById('amb');
+
+  function startAudio() {
+    amb.play().then(() => btn.classList.add('hidden'))
+               .catch(err => console.log('Audio blocked:', err));
+    window.removeEventListener('click', startAudio);
+    window.removeEventListener('touchstart', startAudio);
+  }
+  btn.addEventListener('click', startAudio);
+  window.addEventListener('click', startAudio);
+  window.addEventListener('touchstart', startAudio);
+</script>
+</body>
 </html>
