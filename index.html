@@ -17,7 +17,6 @@
       cursor:pointer; z-index:30
     }
     #start-audio.hidden{display:none}
-
     /* HUD координат — левый низ (для ориентира; можно убрать позже) */
     #hud{
       position:fixed; left:10px; bottom:10px; background:rgba(0,0,0,.6);
@@ -34,9 +33,8 @@
   <a-assets>
     <!-- модель -->
     <a-asset-item id="street" src="assets/models/Limasol_Street%20(2).glb"></a-asset-item>
-    <!-- видео для таблички -->
-    <video id="clip1" src="assets/video/clip1.mp4"
-           preload="metadata" playsinline></video>
+    <!-- видео -->
+    <video id="clip1" src="assets/video/clip1.mp4" preload="metadata" playsinline></video>
   </a-assets>
 
   <!-- Небо -->
@@ -47,111 +45,4 @@
   <a-entity light="type: directional; intensity: 0.6" position="2 4 2"></a-entity>
 
   <!-- RIG (движение) + камера -->
-  <a-entity id="rig" movement-controls="speed: 0.15">
-    <a-entity id="player" camera look-controls touch-controls position="0 1.6 0"></a-entity>
-  </a-entity>
-
-  <!-- Улица -->
-  <a-entity gltf-model="#street" position="0 0 0"></a-entity>
-
-  <!-- Триггер на земле + табличка 3D (как плакат) -->
-  <a-entity id="trigger1"
-            position="6.088 0.0 1.772"
-            proximity-video="radius: 0.5; board: #videoBoard; video: #clip1; duration: 8000">
-    <!-- Табличка: 0.9×0.9 м, стоит на земле; изначально скрыта -->
-    <a-plane id="videoBoard"
-             visible="false"
-             position="0 0.45 0"
-             width="0.9" height="0.9"
-             material="src: #clip1; shader: flat; side: double">
-    </a-plane>
-  </a-entity>
-</a-scene>
-
-<!-- Фоновая музыка -->
-<audio id="amb"
-       src="assets/audio/Analog_Mannequin%20Milk%20Cassette%20X.mp3%20-%20Demo.mp3"
-       preload="auto" loop></audio>
-
-<!-- Кнопка включения звука -->
-<button id="start-audio">🔊 Включить звук</button>
-
-<!-- HUD координат камеры -->
-<div id="hud">x:0 y:0 z:0</div>
-
-<script>
-/* ---------- Звук: снимаем блокировку после первого жеста ---------- */
-let soundUnlocked = false;
-const btn = document.getElementById('start-audio');
-const amb = document.getElementById('amb');
-function startAudio() {
-  amb.play().then(()=>{ soundUnlocked = true; btn.classList.add('hidden'); }).catch(()=>{});
-  window.removeEventListener('click', startAudio);
-  window.removeEventListener('touchstart', startAudio);
-}
-btn.addEventListener('click', startAudio);
-window.addEventListener('click', startAudio);
-window.addEventListener('touchstart', startAudio);
-
-/* ---------- HUD координат ---------- */
-const hud = document.getElementById('hud');
-const camEl = document.querySelector('#player');
-function fmt(n){return Number(n).toFixed(3)}
-setInterval(()=>{
-  if (!camEl.object3D) return;
-  const p = camEl.object3D.getWorldPosition(new THREE.Vector3());
-  hud.textContent = `x:${fmt(p.x)}  y:${fmt(p.y)}  z:${fmt(p.z)}`;
-}, 200);
-
-/* ---------- Компонента: 3D табличка-видео по близости ---------- */
-AFRAME.registerComponent('proximity-video',{
-  schema:{
-    radius:{type:'number', default:0.5},      // радиус срабатывания (м)
-    board:{type:'selector'},                  // <a-plane> с материалом видео
-    video:{type:'selector'},                  // <video> элемент
-    duration:{type:'number', default:8000}    // мс показа
-  },
-  init(){
-    this.inside = false;       // игрок внутри радиуса
-    this.waitExit = false;     // ждём, пока выйдет, чтобы разрешить повторное срабатывание
-    this.board = this.data.board || document.querySelector('#videoBoard');
-    this.video = this.data.video || document.querySelector('#clip1');
-  },
-  tick(){
-    const rigPos = document.querySelector('#rig').object3D.getWorldPosition(new THREE.Vector3());
-    const trigPos = this.el.object3D.getWorldPosition(new THREE.Vector3());
-    const dist = rigPos.distanceTo(trigPos);
-
-    if (!this.inside && !this.waitExit && dist <= this.data.radius) {
-      this.show(rigPos, trigPos);
-    }
-    // если показали и ждём выхода — разблокируем после выхода за радиус
-    if (this.waitExit && dist > this.data.radius){
-      this.waitExit = false;
-      this.inside = false;
-    }
-  },
-  show(rigPos, trigPos){
-    this.inside = true;
-
-    // Повернуть табличку лицом к игроку и показать
-    const boardEl = this.board;
-    boardEl.object3D.lookAt(rigPos);
-    boardEl.setAttribute('visible', true);
-
-    // Настроить видео (звук только если звук разблокирован)
-    this.video.muted = !soundUnlocked;
-    this.video.currentTime = 0;
-    this.video.play().catch(()=>{});
-
-    // Спрятать через duration и ждать выхода из радиуса
-    setTimeout(()=>{
-      this.video.pause();
-      boardEl.setAttribute('visible', false);
-      this.waitExit = true;    // чтобы не срабатывало бесконечно, пока стоим на месте
-    }, this.data.duration);
-  }
-});
-</script>
-</body>
-</html>
+  <a-entity id="rig" movement
