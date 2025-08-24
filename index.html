@@ -45,4 +45,161 @@
   <a-entity light="type: directional; intensity: 0.6" position="2 4 2"></a-entity>
 
   <!-- RIG (движение) + камера -->
-  <a-entity id="rig" movement
+  <a-entity id="rig" movement-controls="speed: 0.15">
+    <a-entity id="player" camera look-controls touch-controls position="0 1.6 0"></a-entity>
+  </a-entity>
+
+  <!-- Улица -->
+  <a-entity gltf-model="#street" position="0 0 0"></a-entity>
+
+  <!-- Триггер в мире (точка, рядом с которой срабатывает) -->
+  <a-entity id="trigger1"
+            position="6.088 0.0 1.772"
+            proximity-video-panel="
+              radius: 0.5;
+              panel: #videoBoard;
+              video: #clip1;
+              forward: 1.2;
+              right: 0.35;
+              loops: 3;
+              cooldownMs: 400;
+              hysteresis: 0.2">
+  </a-entity>
+
+  <!-- Сама «табличка» 0.9×0.9 м. Её позиция/поворот задаём в коде при срабатывании -->
+  <a-plane id="videoBoard"
+           visible="false"
+           width="0.9" height="0.9"
+           material="src: #clip1; shader: flat; side: double">
+  </a-plane>
+</a-scene>
+
+<!-- Фоновая музыка -->
+<audio id="amb"
+       src="assets/audio/Analog_Mannequin%20Milk%20Cassette%20X.mp3%20-%20Demo.mp3"
+       preload="auto" loop></audio>
+
+<!-- Кнопка включения звука -->
+<button id="start-audio">🔊 Включить звук</button>
+
+<!-- HUD координат камеры -->
+<div id="hud">x:0 y:0 z:0</div>
+
+<script>
+/* ---------- Звук: снимаем блокировку после первого жеста ---------- */
+let soundUnlocked = false;
+const btn = document.getElementById('start-audio');
+const amb = document.getElementById('amb');
+function startAudio() {
+  amb.play().then(()=>{ soundUnlocked = true; btn.classList.add('hidden'); }).catch(()=>{});
+  window.removeEventListener('click', startAudio);
+  window.removeEventListener('touchstart', startAudio);
+}
+btn.addEventListener('click', startAudio);
+window.addEventListener('click', startAudio);
+window.addEventListener('touchstart', startAudio);
+
+/* ---------- HUD координат ---------- */
+const hud = document.getElementById('hud');
+const camEl = document.querySelector('#player');
+function fmt(n){return Number(n).toFixed(3)}
+setInterval(()=>{
+  if (!camEl.object3D) return;
+  const p = camEl.object3D.getWorldPosition(new THREE.Vector3());
+  hud.textContent = `x:${fmt(p.x)}  y:${fmt(p.y)}  z:${fmt(p.z)}`;
+}, 200);
+
+/* ---------- Компонента: панель-видео перед зрителем ---------- */
+AFRAME.registerComponent('proximity-video-panel',{
+  schema:{
+    radius:{type:'number', default:0.5},      // радиус срабатывания (м)
+    panel:{type:'selector'},                  // <a-plane> для показа видео
+    video:{type:'selector'},                  // <video>
+    forward:{type:'number', default:1.2},     // расстояние вперёд от игрока (м)
+    right:{type:'number', default:0.35},      // сдвиг вправо (м)
+    loops:{type:'number', default:3},         // раз повторить
+    cooldownMs:{type:'number', default:400},  // защита от «дребезга»
+    hysteresis:{type:'number', default:0.2}   // на сколько дальше нужно уйти, чтобы разрешить повтор
+  },
+  init(){
+    this.active = false;     // сейчас идёт показ
+    this.waitExit = false;   // ждём выхода за радиус
+    this.cooling = false;    // короткий покадровый таймаут
+    this.looped = 0;
+
+    this.panelEl = this.data.panel || document.querySelector('#videoBoard');
+    this.videoEl = this.data.video  || document.querySelector('#clip1');
+
+    // обработчик конца ролика
+    this._onEnded = () => {
+      this.looped++;
+      if (this.looped < this.data.loops) {
+        this.videoEl.currentTime = 0;
+        this.videoEl.play().catch(()=>{});
+      } else {
+        this.hidePanel();
+        this.waitExit = true; // ждём выхода за радиус + гистерезис
+      }
+    };
+  },
+  tick(){
+    const rig = document.querySelector('#rig').object3D.getWorldPosition(new THREE.Vector3());
+    const trig = this.el.object3D.getWorldPosition(new THREE.Vector3());
+    const dist = rig.distanceTo(trig);
+
+    // разрешить повтор после выхода
+    if (this.waitExit && dist > (this.data.radius + this.data.hysteresis)) {
+      this.waitExit = false;
+    }
+
+    if (this.active || this.waitExit || this.cooling) return;
+
+    if (dist <= this.data.radius) {
+      this.showPanel(rig);
+    }
+  },
+  showPanel(rigPos){
+    this.active = true;
+    this.looped = 0;
+
+    // позиция и поворот панели: перед игроком, чуть вправо, на высоте глаз
+    const cam = document.querySelector('#player').object3D;
+    const camPos = cam.getWorldPosition(new THREE.Vector3());
+    const dir = new THREE.Vector3();
+    cam.getWorldDirection(dir);                 // направление камеры
+    const forward = new THREE.Vector3(dir.x, 0, dir.z).normalize(); // только по XZ
+    if (forward.lengthSq() < 1e-6) forward.set(0,0,-1);
+    const right = new THREE.Vector3().crossVectors(forward, new THREE.Vector3(0,1,0)).normalize();
+
+    const pos = new THREE.Vector3()
+      .copy(camPos)
+      .add(forward.multiplyScalar(this.data.forward))
+      .add(right.multiplyScalar(this.data.right));
+
+    // выставляем позицию и «смотрим» на игрока по Y (без наклонов)
+    this.panelEl.object3D.position.copy(pos);
+    const lookTarget = new THREE.Vector3(camPos.x, pos.y, camPos.z); // тот же Y → только поворот по Y
+    this.panelEl.object3D.lookAt(lookTarget);
+    this.panelEl.setAttribute('visible', true);
+
+    // видео
+    this.videoEl.muted = !soundUnlocked;
+    this.videoEl.currentTime = 0;
+    this.videoEl.loop = false;
+    this.videoEl.removeEventListener('ended', this._onEnded);
+    this.videoEl.addEventListener('ended', this._onEnded);
+    this.videoEl.play().catch(()=>{});
+  },
+  hidePanel(){
+    this.videoEl.pause();
+    this.panelEl.setAttribute('visible', false);
+    this.active = false;
+
+    // короткий «анти-дребезг», чтобы не схватить повтор тут же
+    this.cooling = true;
+    setTimeout(()=>{ this.cooling = false; }, this.data.cooldownMs);
+  }
+});
+</script>
+</body>
+</html>
