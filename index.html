@@ -4,43 +4,73 @@
   <meta charset="utf-8" />
   <title>My Cyprus Walk</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <!-- A-Frame -->
   <script src="https://cdn.jsdelivr.net/npm/aframe@1.7.0/dist/aframe.min.js"></script>
+  <!-- A-Frame Extras: movement-controls + touch-controls (мобильный джойстик) -->
+  <script src="https://cdn.jsdelivr.net/npm/aframe-extras@7.5.1/dist/aframe-extras.min.js"></script>
 
   <style>
-    /* Кнопка запуска звука */
-    #start-audio {
-      position: fixed; inset: auto 20px 20px auto;
-      padding: 10px 14px; border-radius: 10px; border: 0;
-      background: #111; color: #fff; font: 600 14px/1.2 system-ui;
-      box-shadow: 0 4px 16px rgba(0,0,0,.2); cursor: pointer; z-index: 10;
+    /* Кнопка запуска фонового звука — левый верх */
+    #start-audio{
+      position:fixed; left:20px; top:20px; padding:10px 14px;
+      border:0; border-radius:10px; background:#111; color:#fff;
+      font:600 14px/1.2 system-ui; box-shadow:0 4px 16px rgba(0,0,0,.2);
+      cursor:pointer; z-index:30
     }
-    #start-audio.hidden { display: none; }
+    #start-audio.hidden{display:none}
+
+    /* POP-UP 300×300 — правый верх */
+    #popup{
+      position:fixed; right:20px; top:20px; width:300px; height:300px;
+      background:#000; border-radius:12px; overflow:hidden; display:none;
+      z-index:25; box-shadow:0 12px 40px rgba(0,0,0,.35)
+    }
+    #popup video{width:100%; height:100%; object-fit:cover}
+
+    /* HUD координат — левый низ (можно убрать позже) */
+    #hud{
+      position:fixed; left:10px; bottom:10px; background:rgba(0,0,0,.6);
+      color:#fff; font:12px system-ui; padding:6px 8px; border-radius:8px;
+      z-index:20; pointer-events:none
+    }
   </style>
 </head>
 <body>
-<a-scene loading-screen="dotsColor:#fff">
+<a-scene
+  loading-screen="dotsColor:#fff"
+  device-orientation-permission-ui="enabled: true">
 
-  <!-- Загружаем ассеты (твоё небо + модель улицы) -->
+  <!-- Ассеты -->
   <a-assets>
-    <!-- Положи свой файл сюда: assets/images/sky.jpg -->
-    <img id="skyTex" src="assets/images/sky.jpg" crossorigin="anonymous">
-
-    <a-asset-item id="street"
-      src="assets/models/Limasol_Street%20(2).glb"></a-asset-item>
+    <a-asset-item id="street" src="assets/models/Limasol_Street%20(2).glb"></a-asset-item>
   </a-assets>
 
-  <!-- Небо: твоя фотография -->
-  <a-sky src="#skyTex" rotation="0 -90 0"></a-sky>
+  <!-- Небо одним цветом -->
+  <a-sky color="#c8c8d6"></a-sky>
 
-  <!-- Свет (чтобы модель не была тёмной) -->
+  <!-- Свет -->
   <a-entity light="type: ambient; intensity: 0.35"></a-entity>
   <a-entity light="type: directional; intensity: 0.6" position="2 4 2"></a-entity>
 
-  <!-- Камера (рост 1.6 м, ходьба WASD / свайп) -->
-  <a-entity camera look-controls wasd-controls position="0 1.6 5"></a-entity>
+  <!-- RIG: контейнер, который двигается; внутри — камера.
+       movement-controls включает ходьбу: клавиатура, геймпад, ТАЧ (джойстик на мобиле). -->
+  <a-entity id="rig" movement-controls="speed: 0.15">
+    <a-entity id="player"
+              camera
+              look-controls
+              touch-controls
+              position="0 1.6 0">
+    </a-entity>
+  </a-entity>
 
   <!-- Модель улицы -->
   <a-entity gltf-model="#street" position="0 0 0"></a-entity>
+
+  <!-- Триггер поп-апа у твоей точки -->
+  <a-entity id="trigger1"
+            position="6.088 1.600 1.772"
+            proximity-popup="radius: 6; video: #clip1; duration: 8000">
+  </a-entity>
 </a-scene>
 
 <!-- Фоновая музыка -->
@@ -48,23 +78,79 @@
        src="assets/audio/Analog_Mannequin%20Milk%20Cassette%20X.mp3%20-%20Demo.mp3"
        preload="auto" loop></audio>
 
-<!-- Кнопка запуска звука -->
+<!-- Кнопка включения звука (слева сверху) -->
 <button id="start-audio">🔊 Включить звук</button>
 
-<script>
-  // Первый жест пользователя — запускаем музыку и прячем кнопку
-  const btn = document.getElementById('start-audio');
-  const amb = document.getElementById('amb');
+<!-- POP-UP 300×300 с видео -->
+<div id="popup">
+  <video id="clip1"
+         src="assets/video/clip1.mp4"
+         preload="metadata"
+         playsinline></video>
+</div>
 
-  function startAudio() {
-    amb.play().then(() => btn.classList.add('hidden'))
-               .catch(err => console.log('Audio blocked:', err));
-    window.removeEventListener('click', startAudio);
-    window.removeEventListener('touchstart', startAudio);
+<!-- HUD координат камеры -->
+<div id="hud">x:0 y:0 z:0</div>
+
+<script>
+/* ---------- Звук: снимаем блокировку после первого жеста ---------- */
+let soundUnlocked = false;
+const btn = document.getElementById('start-audio');
+const amb = document.getElementById('amb');
+function startAudio() {
+  amb.play().then(()=>{
+    soundUnlocked = true;
+    btn.classList.add('hidden');
+  }).catch(()=>{});
+  window.removeEventListener('click', startAudio);
+  window.removeEventListener('touchstart', startAudio);
+}
+btn.addEventListener('click', startAudio);
+window.addEventListener('click', startAudio);
+window.addEventListener('touchstart', startAudio);
+
+/* ---------- HUD координат ---------- */
+const hud = document.getElementById('hud');
+const camEl = document.querySelector('#player');
+function fmt(n){return Number(n).toFixed(3)}
+setInterval(()=>{
+  if (!camEl.object3D) return;
+  const p = camEl.object3D.getWorldPosition(new THREE.Vector3());
+  hud.textContent = `x:${fmt(p.x)}  y:${fmt(p.y)}  z:${fmt(p.z)}`;
+}, 200);
+
+/* ---------- Поп-ап по близости ---------- */
+AFRAME.registerComponent('proximity-popup',{
+  schema:{
+    radius:{type:'number', default:6},
+    video:{type:'selector'},
+    duration:{type:'number', default:8000}
+  },
+  init(){
+    this._shown = false;
+    this._popup = document.getElementById('popup');
+    this._video = this.data.video || document.getElementById('clip1');
+  },
+  tick(){
+    if(this._shown) return;
+    const rig = document.querySelector('#rig').object3D.getWorldPosition(new THREE.Vector3());
+    const p = this.el.object3D.getWorldPosition(new THREE.Vector3());
+    const dist = rig.distanceTo(p);
+    if(dist <= this.data.radius){ this.show(); }
+  },
+  show(){
+    this._shown = true;
+    this._popup.style.display = 'block';
+    this._video.muted = !soundUnlocked;
+    this._video.currentTime = 0;
+    this._video.play().catch(()=>{});
+    setTimeout(()=>{
+      this._video.pause();
+      this._popup.style.display = 'none';
+      // this._shown = false; // раскомментируй, если нужно срабатывать повторно
+    }, this.data.duration);
   }
-  btn.addEventListener('click', startAudio);
-  window.addEventListener('click', startAudio);
-  window.addEventListener('touchstart', startAudio);
+});
 </script>
 </body>
 </html>
