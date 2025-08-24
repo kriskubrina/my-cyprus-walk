@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <title>My Cyprus Walk — solid sky</title>
+
+    <!-- A-Frame -->
+    <script src="https://cdn.jsdelivr.net/npm/aframe@1.7.0/dist/aframe.min.js"></script>
+  </head>
+  <body>
+    <a-scene loading-screen="dotsColor:#fff">
+      <!-- СПЛОШНОЙ ЦВЕТ НЕБА -->
+      <a-sky color="#c8c8d6"></a-sky>
+      <!-- вечерний фиолетово-сиреневый -->
+
+      <!-- Свет (ambient + directional) -->
+      <a-entity light="type: ambient; intensity: 0.35"></a-entity>
+      <a-entity
+        light="type: directional; intensity: 0.6"
+        position="2 4 2"
+      ></a-entity>
+
+      <!-- Камера (рост 1.6 м) -->
+      <a-entity
+        camera
+        look-controls
+        wasd-controls
+        position="0 1.6 5"
+      ></a-entity>
+
+      <!-- Ассеты -->
+      <a-assets>
+        <a-asset-item
+          id="street"
+          crossorigin="anonymous"
+          src="https://cdn.glitch.me/924b7adc-60ad-4273-bda4-ac0dba961016/Limasol_Street%20(2).glb?v=1751715786419"
+        >
+        </a-asset-item>
+      </a-assets>
+
+      <!-- Улица -->
+      <a-entity gltf-model="#street" position="0 0 0"></a-entity>
+    </a-scene>
+
+    <!-- Фоновая музыка -->
+    <audio
+      id="amb"
+      crossorigin="anonymous"
+      src="https://cdn.glitch.global/924b7adc-60ad-4273-bda4-ac0dba961016/Analog_Mannequin%20Milk%20Cassette%20X.mp3%20-%20Demo.mp3?v=1751715412939"
+      preload="auto"
+      loop
+    ></audio>
+
+    <script>
+      /* первый клик/тап — снимаем блокировку автоплея */
+      function unlock() {
+        document
+          .getElementById("amb")
+          .play()
+          .catch(() => {});
+        window.removeEventListener("click", unlock);
+        window.removeEventListener("touchstart", unlock);
+      }
+      window.addEventListener("click", unlock);
+      window.addEventListener("touchstart", unlock);
+    </script>
+  </body>
+</html>
