@@ -5,61 +5,47 @@
   <title>My Cyprus Walk</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="theme-color" content="#000000" />
-  <!-- A-Frame -->
   <script src="https://cdn.jsdelivr.net/npm/aframe@1.7.0/dist/aframe.min.js"></script>
-  <!-- NippleJS (для мобайла) -->
   <script src="https://cdn.jsdelivr.net/npm/nipplejs@0.10.1/dist/nipplejs.min.js"></script>
-
   <style>
     *{ -webkit-tap-highlight-color:transparent; }
     html,body{ margin:0; height:100%; background:#000; overflow:hidden; }
 
     /* иконка mute/unmute — левый верх */
-    #mute{
-      position:fixed; left:12px; top:12px; padding:10px;
-      border:0; border-radius:10px; background:#111; color:#fff;
-      font:20px/1 system-ui; box-shadow:0 4px 16px rgba(0,0,0,.2);
-      z-index:30; cursor:pointer
-    }
+    #mute{ position:fixed; left:12px; top:12px; padding:10px; border:0; border-radius:10px;
+      background:#111; color:#fff; font:20px/1 system-ui; box-shadow:0 4px 16px rgba(0,0,0,.2);
+      z-index:30; cursor:pointer }
 
-    /* координаты (можно убрать позже) */
-    #hud{
-      position:fixed; left:10px; bottom:10px; background:rgba(0,0,0,.6);
-      color:#fff; font:12px system-ui; padding:6px 8px; border-radius:8px;
-      z-index:20; pointer-events:none
-    }
+    /* координаты (для отладки) */
+    #hud{ position:fixed; left:10px; bottom:10px; background:rgba(0,0,0,.6); color:#fff;
+      font:12px system-ui; padding:6px 8px; border-radius:8px; z-index:20; pointer-events:none }
 
-    /* два джойстика — низ слева/справа (показываем только на мобайле) */
+    /* два джойстика — показываем только на мобайле */
     .joy{ position:fixed; bottom:18px; width:160px; height:160px; z-index:25; touch-action:none; opacity:.95; display:none; }
-    #joy-move{ left:18px; }
-    #joy-rot { right:18px; }
-    .joy::before{
-      content:''; position:absolute; inset:0; border-radius:50%;
+    #joy-move{ left:18px; }  #joy-rot{ right:18px; }
+    .joy::before{ content:''; position:absolute; inset:0; border-radius:50%;
       background:radial-gradient(circle at 50% 50%, rgba(255,255,255,.15), rgba(0,0,0,.2));
-      box-shadow:0 8px 28px rgba(0,0,0,.25);
-    }
+      box-shadow:0 8px 28px rgba(0,0,0,.25); }
 
-    /* мини-радар — ПРАВЫЙ ВЕРХ, прозрачный */
-    #radar { position:fixed; right:12px; top:12px; width:110px; height:110px;
-             z-index:26; pointer-events:none; }
-    #radar canvas { width:100%; height:100%; display:block; }
+    /* радар (размер задаём из JS) — правый верх, прозрачный */
+    #radar{ position:fixed; right:12px; top:12px; z-index:26; pointer-events:none; }
+    #radar canvas{ width:100%; height:100%; display:block; }
 
-    /* точки «хвоста» */
-    .dot { mix-blend-mode: screen; }
+    /* крошки «хвоста» */
+    .dot{ mix-blend-mode: screen; }
   </style>
 </head>
 <body>
-<a-scene loading-screen="dotsColor:#fff" device-orientation-permission-ui="enabled: true">
+<a-scene renderer="colorManagement:true" loading-screen="enabled:false" device-orientation-permission-ui="enabled:true">
 
   <!-- ассеты -->
   <a-assets>
     <img id="skyTex" src="assets/images/sky.jpg" crossorigin="anonymous">
     <a-asset-item id="street" src="assets/models/Limasol_Street%20(2).glb"></a-asset-item>
-    <video id="clip1" src="assets/video/clip1.mp4"
-           preload="metadata" playsinline webkit-playsinline muted></video>
+    <video id="clip1" src="assets/video/clip1.mp4" preload="metadata" playsinline webkit-playsinline muted></video>
   </a-assets>
 
-  <!-- небо-картинка -->
+  <!-- небо -->
   <a-sky src="#skyTex" rotation="0 -90 0"></a-sky>
 
   <!-- свет -->
@@ -67,41 +53,38 @@
   <a-entity light="type: directional; intensity: 0.6" position="2 4 2"></a-entity>
 
   <!-- RIG + камера -->
-  <a-entity id="rig" wasd-controls="acceleration: 40">
-    <a-entity id="player"
-              camera
-              look-controls="touchEnabled:false; mouseEnabled:true"
-              position="0 1.6 0"></a-entity>
+  <a-entity id="rig">
+    <a-entity id="player" camera="near:0.01; far:1000" look-controls="touchEnabled:false; mouseEnabled:true" position="0 1.6 0"></a-entity>
   </a-entity>
 
-  <!-- улица -->
+  <!-- модель улицы -->
   <a-entity gltf-model="#street" position="0 0 0"></a-entity>
 
   <!-- триггер(ы) поп-апа -->
   <a-entity class="trigger"
             position="6.088 0.0 1.772"
-            follow-video-panel="radius:2.0; video:#clip1; width:0.9; height:0.9; forward:1.2; right:0.35; loops:3; hysteresis:0.10">
+            follow-video-panel="radius:2.0; video:#clip1; width:1.1; height:0.7; forward:1.25; right:0.0; loops:3; hysteresis:0.10">
   </a-entity>
 
-  <!-- плоскость панели (её двигает компонент) -->
-  <a-plane id="videoBoard" visible="false" width="0.9" height="0.9"
-           material="src:#clip1; shader:flat; side:double"></a-plane>
+  <!-- плоскость панели (материал поверх всего) -->
+  <a-plane id="videoBoard" visible="false" width="1.1" height="0.7"
+           material="src:#clip1; shader:flat; side:double; depthTest:false; transparent:true; opacity:1"></a-plane>
 </a-scene>
 
 <!-- фоновая музыка -->
-<audio id="amb"
-       src="assets/audio/Analog_Mannequin%20Milk%20Cassette%20X.mp3%20-%20Demo.mp3"
-       preload="auto" loop></audio>
+<audio id="amb" src="assets/audio/Analog_Mannequin%20Milk%20Cassette%20X.mp3%20-%20Demo.mp3" preload="auto" loop></audio>
 
 <!-- UI -->
 <button id="mute" aria-label="Toggle sound">🔇</button>
 <div id="joy-move" class="joy"></div>
 <div id="joy-rot"  class="joy"></div>
 <div id="hud">x:0 y:0 z:0</div>
-<div id="radar"><canvas id="radarCanvas" width="110" height="110"></canvas></div>
+
+<!-- адаптивный радар -->
+<div id="radar"><canvas id="radarCanvas"></canvas></div>
 
 <script>
-/* ===================== АУДИО: mute/unmute, без перезапуска ===================== */
+/* ===== звук: mute/unmute без перезапуска ===== */
 const amb = document.getElementById('amb');
 const muteBtn = document.getElementById('mute');
 let audioStarted = false;
@@ -111,78 +94,72 @@ muteBtn.addEventListener('click', ()=>{ ensurePlayOnce(); amb.muted = !amb.muted
 ['click','touchstart'].forEach(ev=>window.addEventListener(ev, ensurePlayOnce));
 updateMuteIcon();
 
-/* ===================== HUD координат ===================== */
+/* ===== базовые ссылки ===== */
+const rig = document.getElementById('rig');
+const camEl = document.getElementById('player');
+
+/* ===== HUD ===== */
 const hud = document.getElementById('hud');
-const camEl = document.querySelector('#player');
 function fmt(n){return Number(n).toFixed(3)}
 setInterval(()=>{
-  if (!camEl.object3D) return;
   const p = camEl.object3D.getWorldPosition(new THREE.Vector3());
   hud.textContent = `x:${fmt(p.x)}  y:${fmt(p.y)}  z:${fmt(p.z)}`;
 }, 200);
 
-/* ======== надёжный детектор мобайла/тача: только тогда показываем джойстики ======== */
-const rig = document.getElementById('rig');
-const isTouch = AFRAME.utils.device.isMobile() ||
-                navigator.maxTouchPoints > 0 ||
-                window.matchMedia('(pointer: coarse)').matches;
+/* ===== детектор мобайла ===== */
+const isTouch = AFRAME.utils.device.isMobile() || navigator.maxTouchPoints>0 || window.matchMedia('(pointer:coarse)').matches;
 
-/* ===================== ДВА ДЖОЙСТИКА (только мобильные) ===================== */
+/* ===== WASD на десктопе — движение ВДОЛЬ ВЗГЛЯДА (двигаем КАМЕРУ) ===== */
+if (!isTouch){
+  camEl.setAttribute('wasd-controls','acceleration: 40');  // стандартный контрол A-Frame: вперёд = куда смотрит камера
+} else {
+  // на мобайле мышиные повороты не нужны — будут стики/гиро
+  camEl.setAttribute('look-controls','touchEnabled:false; mouseEnabled:false');
+}
+
+/* ===== два джойстика на мобайле (движение/поворот rig вокруг Y) ===== */
 let moveActive=false, rotActive=false, moveVec={x:0,y:0}, rotVec={x:0,y:0}, rigYaw=0;
-
 if (isTouch){
-  document.getElementById('joy-move').style.display='block';
-  document.getElementById('joy-rot').style.display='block';
+  const jmWrap = document.getElementById('joy-move');
+  const jrWrap = document.getElementById('joy-rot');
+  jmWrap.style.display='block'; jrWrap.style.display='block';
 
-  const jm = nipplejs.create({ zone: document.getElementById('joy-move'),
-    mode:'static', size:130, position:{left:'50%', top:'50%'}, color:'white', restOpacity:0.85 });
+  const jm = nipplejs.create({ zone: jmWrap, mode:'static', size:130, position:{left:'50%', top:'50%'}, color:'white', restOpacity:0.85 });
   jm.on('move', (_, d)=>{ if(!d||!d.vector) return; moveActive=true; moveVec.x=d.vector.x; moveVec.y=-d.vector.y; });
   jm.on('end', ()=>{ moveActive=false; moveVec.x=0; moveVec.y=0; });
 
-  const jr = nipplejs.create({ zone: document.getElementById('joy-rot'),
-    mode:'static', size:130, position:{left:'50%', top:'50%'}, color:'white', restOpacity:0.85 });
+  const jr = nipplejs.create({ zone: jrWrap, mode:'static', size:130, position:{left:'50%', top:'50%'}, color:'white', restOpacity:0.85 });
   jr.on('move', (_, d)=>{ if(!d||!d.vector) return; rotActive=true; rotVec.x=d.vector.x; rotVec.y=d.vector.y; });
   jr.on('end', ()=>{ rotActive=false; rotVec.x=0; rotVec.y=0; });
 
-  // на мобайле — без мышиных поворотов (гироскоп + правый стик)
-  camEl.setAttribute('look-controls', 'touchEnabled:false; mouseEnabled:false');
+  AFRAME.registerComponent('dual-stick',{
+    schema:{ speed:{type:'number', default:1.6}, rotSpeed:{type:'number', default:2.8} },
+    tick:function(t, dt){
+      const sec = Math.min(0.05, dt/1000);
+      if (rotActive){ rigYaw += rotVec.x * this.data.rotSpeed * sec; rig.object3D.rotation.y = rigYaw; }
+      if (moveActive){
+        const yaw = rig.object3D.rotation.y, cos=Math.cos(yaw), sin=Math.sin(yaw);
+        const localF = this.data.speed * moveVec.y * sec, localR = this.data.speed * moveVec.x * sec;
+        rig.object3D.position.x +=  localR*cos + localF*sin;
+        rig.object3D.position.z += -localR*sin - localF*cos;
+      }
+    }
+  });
+  rig.setAttribute('dual-stick','speed:1.6; rotSpeed:2.8');
 }
 
-/* перемещение и поворот от стиков (только мобильные) */
-AFRAME.registerComponent('dual-stick',{
-  schema:{ speed:{type:'number', default:1.6}, rotSpeed:{type:'number', default:2.5} },
-  tick: function(time, dt){
-    if (!isTouch) return; // десктоп — WASD + мышь
-    const sec = Math.min(0.05, dt/1000);
+/* ===== кто «двигается» сейчас: на десктопе — КАМЕРА, на мобайле — RIG ===== */
+const moverEl = isTouch ? rig : camEl;
 
-    // поворот rig по Y правым стиком
-    if (rotActive){
-      rigYaw += rotVec.x * this.data.rotSpeed * sec;
-      rig.object3D.rotation.y = rigYaw;
-    }
-    // движение относительно ориентации rig (вперёд — локальный -Z)
-    if (moveActive){
-      const yaw = rig.object3D.rotation.y;
-      const cos = Math.cos(yaw), sin = Math.sin(yaw);
-      const localF = this.data.speed * moveVec.y * sec; // вдоль -Z
-      const localR = this.data.speed * moveVec.x * sec; // вдоль +X
-      const dX =  localR * cos + localF * sin;
-      const dZ = -localR * sin - localF * cos;
-      const p = rig.object3D.position; p.x += dX; p.z += dZ;
-    }
-  }
-});
-rig.setAttribute('dual-stick','speed:1.6; rotSpeed:2.8');
-
-/* ===================== ПОП-АП: всегда перед зрителем, поворот по Y ===================== */
+/* ===== поп-ап панель: всегда перед взглядом, поверх глубины ===== */
 AFRAME.registerComponent('follow-video-panel',{
   schema:{
     radius:{type:'number', default:2.0},
     video:{type:'selector'},
-    width:{type:'number', default:0.9},
-    height:{type:'number', default:0.9},
-    forward:{type:'number', default:1.2},
-    right:{type:'number', default:0.35},
+    width:{type:'number', default:1.1},
+    height:{type:'number', default:0.7},
+    forward:{type:'number', default:1.25},
+    right:{type:'number', default:0.0},
     loops:{type:'number', default:3},
     hysteresis:{type:'number', default:0.1}
   },
@@ -199,26 +176,27 @@ AFRAME.registerComponent('follow-video-panel',{
     };
   },
   tick(){
-    // расстояние по XZ (высоту игнорируем)
-    const rigPos = rig.object3D.getWorldPosition(new THREE.Vector3());
-    const trigPos = this.el.object3D.getWorldPosition(new THREE.Vector3());
-    const distXZ = Math.hypot(rigPos.x - trigPos.x, rigPos.z - trigPos.z);
+    // дистанция считаем от того, кто реально движется (moverEl)
+    const mPos = moverEl.object3D.getWorldPosition(new THREE.Vector3());
+    const tPos = this.el.object3D.getWorldPosition(new THREE.Vector3());
+    const distXZ = Math.hypot(mPos.x - tPos.x, mPos.z - tPos.z);
 
     if (this.waitExit && distXZ > (this.data.radius + this.data.hysteresis)) this.waitExit = false;
     if (!this.active && !this.waitExit && distXZ <= this.data.radius) this.show();
 
     if (this.active){
+      // ставим прямо перед камерой (в мировом пространстве), только по Y-повороту
       const cam = camEl.object3D;
       const camPos = cam.getWorldPosition(new THREE.Vector3());
       const dir = new THREE.Vector3(); cam.getWorldDirection(dir);
-      const fwd = new THREE.Vector3(dir.x, 0, dir.z).normalize();
-      if (fwd.lengthSq() < 1e-6) fwd.set(0,0,-1);
-      const right = new THREE.Vector3().crossVectors(fwd, new THREE.Vector3(0,1,0)).normalize();
-      const pos = new THREE.Vector3()
-        .copy(camPos)
+      const fwd = new THREE.Vector3(dir.x,0,dir.z).normalize(); if (fwd.lengthSq()<1e-6) fwd.set(0,0,-1);
+      const right = new THREE.Vector3().crossVectors(fwd,new THREE.Vector3(0,1,0)).normalize();
+      const pos = new THREE.Vector3().copy(camPos)
         .addScaledVector(fwd,  this.data.forward)
         .addScaledVector(right, this.data.right);
       this.panel.object3D.position.copy(pos);
+
+      // поворот только по Y лицом к игроку
       const yaw = Math.atan2(camPos.x - pos.x, camPos.z - pos.z);
       this.panel.object3D.rotation.set(0, yaw, 0);
     }
@@ -226,7 +204,7 @@ AFRAME.registerComponent('follow-video-panel',{
   show(){
     this.active = true; this.looped = 0;
     this.panel.setAttribute('visible', true);
-    this.video.muted = amb.muted; // синхрон с иконкой звука
+    this.video.muted = amb.muted;
     this.video.loop = false;
     this.video.removeEventListener('ended', this._onEnded);
     this.video.addEventListener('ended', this._onEnded);
@@ -240,73 +218,60 @@ AFRAME.registerComponent('follow-video-panel',{
   }
 });
 
-/* ===================== МИНИ-РАДАР (правый верх), много триггеров ===================== */
+/* ===== радар: адаптивный размер (desktop крупнее) ===== */
 (function(){
-  const RADAR_SIZE = 110;
-  const RADAR_RANGE = 25; // м до края
+  const RADAR_SIZE = (!isTouch ? 200 : 110);
+  const radar = document.getElementById('radar');
   const c = document.getElementById('radarCanvas');
+  radar.style.width = RADAR_SIZE+'px';
+  radar.style.height = RADAR_SIZE+'px';
+  c.width = RADAR_SIZE; c.height = RADAR_SIZE;
+
   const ctx = c.getContext('2d');
   const cx = RADAR_SIZE/2, cy = RADAR_SIZE/2, R = RADAR_SIZE/2 - 2;
+  const RADAR_RANGE = 25;
 
-  function drawRing(r, a=0.35){ ctx.strokeStyle = `rgba(255,255,255,${a})`; ctx.beginPath(); ctx.arc(cx,cy,r,0,Math.PI*2); ctx.stroke(); }
-
-  function tickRadar(){
-    const cam = camEl.object3D, rig3 = rig.object3D;
-    if (!cam || !rig3) return;
-
-    const fwd = new THREE.Vector3(); cam.getWorldDirection(fwd);
-    fwd.y=0; fwd.normalize(); if (fwd.lengthSq()<1e-6) fwd.set(0,0,-1);
-    const right = new THREE.Vector3().crossVectors(fwd, new THREE.Vector3(0,1,0)).normalize();
-
-    const rigPos = rig3.getWorldPosition(new THREE.Vector3());
+  function ring(r,a){ ctx.strokeStyle=`rgba(255,255,255,${a})`; ctx.beginPath(); ctx.arc(cx,cy,r,0,Math.PI*2); ctx.stroke(); }
+  setInterval(()=>{
+    const cam = camEl.object3D, mover = moverEl.object3D;
+    if (!cam || !mover) return;
+    const fwd = new THREE.Vector3(); cam.getWorldDirection(fwd); fwd.y=0; fwd.normalize(); if(fwd.lengthSq()<1e-6) fwd.set(0,0,-1);
+    const right = new THREE.Vector3().crossVectors(fwd,new THREE.Vector3(0,1,0)).normalize();
+    const mPos = mover.getWorldPosition(new THREE.Vector3());
     const triggers = Array.from(document.querySelectorAll('.trigger,[follow-video-panel],[anchor-video-panel]'));
 
     ctx.clearRect(0,0,c.width,c.height);
-    ctx.lineWidth = 1;
-    drawRing(R, 0.25); drawRing(R*0.66, 0.18); drawRing(R*0.33, 0.14);
-    ctx.strokeStyle = 'rgba(255,255,255,0.18)';
-    ctx.beginPath(); ctx.moveTo(cx, cy-R); ctx.lineTo(cx, cy-R+6); ctx.stroke();
+    ctx.lineWidth=1; ring(R,0.25); ring(R*0.66,0.18); ring(R*0.33,0.14);
+    ctx.strokeStyle='rgba(255,255,255,0.18)'; ctx.beginPath(); ctx.moveTo(cx, cy-R); ctx.lineTo(cx, cy-R+6); ctx.stroke();
+    ctx.fillStyle='#fff'; ctx.beginPath(); ctx.arc(cx,cy,2.5,0,Math.PI*2); ctx.fill();
 
-    // игрок
-    ctx.fillStyle = '#ffffff';
-    ctx.beginPath(); ctx.arc(cx, cy, 2.5, 0, Math.PI*2); ctx.fill();
-
-    // точки
     let nearest=null, nearestDist=Infinity, pts=[];
     triggers.forEach(t=>{
       const tp = t.object3D.getWorldPosition(new THREE.Vector3());
-      const dx = tp.x - rigPos.x, dz = tp.z - rigPos.z;
-      const localX = dx*right.x + dz*right.z;  // вправо +
-      const localZ = dx*fwd.x   + dz*fwd.z;    // вперёд +
-      const dist = Math.hypot(localX, localZ);
-      pts.push({localX, localZ, dist});
-      if (dist < nearestDist){ nearestDist = dist; nearest = pts[pts.length-1]; }
+      const dx=tp.x-mPos.x, dz=tp.z-mPos.z;
+      const lx = dx*right.x + dz*right.z, lz = dx*fwd.x + dz*fwd.z;
+      const d = Math.hypot(lx,lz); pts.push({lx,lz,d});
+      if(d<nearestDist){nearestDist=d; nearest=pts[pts.length-1];}
     });
 
-    const scale = (R-6)/RADAR_RANGE;
-    pts.forEach(p=>{
-      if (p.dist > RADAR_RANGE) return;
-      const x = cx + p.localX*scale, y = cy - p.localZ*scale;
-      ctx.fillStyle = '#00ffa8';
-      ctx.beginPath(); ctx.arc(x,y,3,0,Math.PI*2); ctx.fill();
-    });
-    if (nearest && nearest.dist <= RADAR_RANGE){
-      const x = cx + nearest.localX*scale, y = cy - nearest.localZ*scale;
-      ctx.strokeStyle = 'rgba(255,215,0,0.9)'; ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.arc(x,y,6,0,Math.PI*2); ctx.stroke(); ctx.lineWidth=1;
+    const s=(R-6)/RADAR_RANGE;
+    ctx.fillStyle='#00ffa8';
+    pts.forEach(p=>{ if(p.d>RADAR_RANGE) return; ctx.beginPath(); ctx.arc(cx+p.lx*s, cy-p.lz*s, 3, 0, Math.PI*2); ctx.fill(); });
+    if (nearest && nearestDist<=RADAR_RANGE){
+      ctx.strokeStyle='rgba(255,215,0,0.9)'; ctx.lineWidth=2;
+      ctx.beginPath(); ctx.arc(cx+nearest.lx*s, cy-nearest.lz*s, 6, 0, Math.PI*2); ctx.stroke(); ctx.lineWidth=1;
     }
-  }
-  setInterval(tickRadar, 80);
+  },80);
 })();
 
-/* ===================== «ХВОСТ» ИЗ ТОЧЕК — мелкий, длиннее на desktop ===================== */
+/* ===== «хвост» из точек — в 10 раз больше ===== */
 AFRAME.registerComponent('crumb-trail',{
   schema:{
     step:{type:'number', default:0.6},
-    radius:{type:'number', default:0.007},        // очень мелкие точки
-    color:{type:'color',  default:'#00e0ff'},     // циан
-    fadeSeconds:{type:'number', default:75},      // живут дольше
-    max:{type:'number', default:750},             // базово (мобайл)
+    radius:{type:'number', default:0.007},
+    color:{type:'color',  default:'#00e0ff'},
+    fadeSeconds:{type:'number', default:75},
+    max:{type:'number', default:750},   // базовое значение, ниже мы переопределим
     y:{type:'number', default:0.03}
   },
   init(){ this.last=null; this.pool=[]; this.active=[]; this.tmp=new THREE.Vector3(); },
@@ -321,7 +286,7 @@ AFRAME.registerComponent('crumb-trail',{
     e.classList.add('dot');
     e.setAttribute('geometry', `primitive: sphere; radius: ${this.data.radius}`);
     e.setAttribute('material', `color: ${this.data.color}; shader: flat; opacity: 0.9; transparent: true`);
-    e.setAttribute('animation__pulse', 'property: material.opacity; dir: alternate; from:0.7; to:0.95; dur:800; loop:true');
+    e.setAttribute('animation__pulse','property: material.opacity; dir: alternate; from:0.7; to:0.95; dur:800; loop:true');
     this.el.sceneEl.appendChild(e);
     return e;
   },
@@ -334,26 +299,24 @@ AFRAME.registerComponent('crumb-trail',{
     const life = this.data.fadeSeconds*1000;
     setTimeout(()=>{
       if (!e.parentNode) return;
-      e.setAttribute('animation__fade', `property: material.opacity; to: 0; dur: 1500; startEvents: startfade;`);
+      e.setAttribute('animation__fade','property: material.opacity; to:0; dur:1500; startEvents:startfade;');
       e.emit('startfade');
       setTimeout(()=>{
-        e.object3D.visible = false;
-        e.removeAttribute('animation__fade');
-        const idx = this.active.indexOf(e); if (idx>=0) this.active.splice(idx,1);
+        e.object3D.visible=false; e.removeAttribute('animation__fade');
+        const i=this.active.indexOf(e); if(i>=0) this.active.splice(i,1);
         this.pool.push(e);
-      }, 1600);
+      },1600);
     }, life);
 
     if (this.active.length > this.data.max){
-      const old = this.active.shift();
-      if (old){ old.object3D.visible=false; this.pool.push(old); }
+      const old=this.active.shift(); if(old){ old.object3D.visible=false; this.pool.push(old); }
     }
   }
 });
 
-/* навешиваем след: на desktop удваиваем лимит точек */
-const trailMax = isTouch ? 750 : 1500;
-rig.setAttribute('crumb-trail', `step:0.6; radius:0.007; color:#00e0ff; fadeSeconds:75; max:${trailMax}; y:0.03`);
+/* вешаем след: desktop 15000, mobile 7500 */
+const trailMax = isTouch ? 7500 : 15000;
+moverEl.setAttribute('crumb-trail', `step:0.6; radius:0.007; color:#00e0ff; fadeSeconds:75; max:${trailMax}; y:0.03`);
 </script>
 </body>
 </html>
