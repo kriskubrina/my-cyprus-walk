@@ -19,13 +19,13 @@
       z-index:30; cursor:pointer;
     }
 
-    /* координаты (для отладки) */
+    /* координаты (отладка) */
     #hud{
       position:fixed; left:10px; bottom:10px; background:rgba(0,0,0,.6); color:#fff;
       font:12px system-ui; padding:6px 8px; border-radius:8px; z-index:20; pointer-events:none;
     }
 
-    /* джойстики — только на мобайле */
+    /* джойстики (только мобильные) */
     .joy{ position:fixed; bottom:18px; width:160px; height:160px; z-index:25; touch-action:none; opacity:.95; display:none; }
     #joy-move{ left:18px; }  #joy-rot{ right:18px; }
     .joy::before{ content:''; position:absolute; inset:0; border-radius:50%;
@@ -47,7 +47,10 @@
   <a-assets>
     <img id="skyTex" src="assets/images/sky.jpg" crossorigin="anonymous">
     <a-asset-item id="street" src="assets/models/Limasol_Street%20(2).glb"></a-asset-item>
-    <video id="clip1" src="assets/video/clip1.mp4" preload="metadata" playsinline webkit-playsinline muted></video>
+
+    <!-- ВАЖНО: mp4 H.264 + AAC, playsinline + muted для iOS -->
+    <video id="clip1" src="assets/video/clip1.mp4" preload="metadata"
+           playsinline webkit-playsinline muted crossorigin="anonymous"></video>
   </a-assets>
 
   <!-- небо -->
@@ -70,12 +73,17 @@
   <!-- триггер(ы) поп-апа -->
   <a-entity class="trigger"
             position="6.088 0.0 1.772"
-            follow-video-panel="radius:2.0; video:#clip1; width:1.2; height:0.68; front:0.8; elev:0.45; right:0.0; loops:3; hysteresis:0.10">
+            popup-video="radius:2.0; video:#clip1; width:1.2; height:0.68; front:1.0; elev:0.45; right:0.0; loops:3; hysteresis:0.10">
   </a-entity>
 
-  <!-- плоскость панели (в мире, но поверх всего) -->
-  <a-plane id="videoBoard" visible="false" width="1.2" height="0.68"
-           material="src:#clip1; shader:flat; side:double; depthTest:false; depthWrite:false; transparent:true; opacity:1"></a-plane>
+  <!-- ПОПАП: a-video + подложка-рамка (отдельными объектами) -->
+  <a-entity id="videoGroup" visible="false">
+    <a-video id="videoBoard" src="#clip1" width="1.2" height="0.68"
+             material="shader:flat; side:double; depthTest:false; depthWrite:false; transparent:true; opacity:1"></a-video>
+    <!-- тонкая рамка позади, чтобы контраст был выше -->
+    <a-plane id="videoFrame" width="1.25" height="0.73" position="0 0 -0.01"
+             material="color:#000; shader:flat; depthTest:false; depthWrite:false; opacity:0.7; transparent:true"></a-plane>
+  </a-entity>
 </a-scene>
 
 <!-- фоновая музыка -->
@@ -89,7 +97,7 @@
 <div id="radar"><canvas id="radarCanvas"></canvas></div>
 
 <script>
-/* ===== ЗВУК: mute/unmute без перезапуска ===== */
+/* ===== Звук: mute/unmute без перезапуска ===== */
 const amb = document.getElementById('amb');
 const muteBtn = document.getElementById('mute');
 let audioStarted = false;
@@ -97,8 +105,7 @@ function ensurePlayOnce(){ if (audioStarted) return; audioStarted = true; amb.mu
 function updateMuteIcon(){ muteBtn.textContent = amb.muted ? '🔇' : '🔊'; }
 muteBtn.addEventListener('click', ()=>{
   ensurePlayOnce(); amb.muted = !amb.muted; updateMuteIcon();
-  // синхронизировать все видео (включая активный поп-ап)
-  document.querySelectorAll('video').forEach(v=>v.muted = amb.muted);
+  document.querySelectorAll('video').forEach(v=>v.muted = amb.muted); // синхронизируем с видео
 });
 ['click','touchstart'].forEach(ev=>window.addEventListener(ev, ensurePlayOnce));
 updateMuteIcon();
@@ -106,6 +113,9 @@ updateMuteIcon();
 /* ===== базовые ссылки ===== */
 const rig = document.getElementById('rig');
 const camEl = document.getElementById('player');
+const videoEl = document.getElementById('clip1');
+const videoGroup = document.getElementById('videoGroup');
+const videoBoard = document.getElementById('videoBoard');
 
 /* ===== HUD ===== */
 const hud = document.getElementById('hud');
@@ -127,7 +137,7 @@ if (!isTouch){
   camEl.setAttribute('look-controls','touchEnabled:false; mouseEnabled:false');
 }
 
-/* ===== Мобайл: два стика (движение/поворот камеры), без инверсий ===== */
+/* ===== Мобайл: стики без инверсии. Левый — движение по взгляду камеры; Правый — yaw + pitch ===== */
 let moveActive=false, rotActive=false, moveVec={x:0,y:0}, rotVec={x:0,y:0};
 if (isTouch){
   const jmWrap = document.getElementById('joy-move');
@@ -144,7 +154,6 @@ if (isTouch){
   jr.on('move', (_, d)=>{ if(!d||!d.vector) return; rotActive=true; rotVec.x=d.vector.x; rotVec.y=d.vector.y; });
   jr.on('end', ()=>{ rotActive=false; rotVec.x=0; rotVec.y=0; });
 
-  // управление камерой: yaw (влево/вправо), pitch (вверх/вниз)
   AFRAME.registerComponent('mobile-camera-control',{
     schema:{ moveSpeed:{default:1.8}, rotSpeed:{default:1.8} },
     tick: function(t, dt){
@@ -152,24 +161,21 @@ if (isTouch){
       const lc = camEl.components['look-controls'];
       if (!lc) return;
 
-      // вращение камеры
+      // вращение камеры (правый стик): yaw и pitch как на геймпаде
       if (rotActive){
         const yawObj = lc.yawObject, pitchObj = lc.pitchObject;
-        // вправо — поворот вправо; вверх — смотреть вверх
-        yawObj.rotation.y -= rotVec.x * this.data.rotSpeed * sec;
-        pitchObj.rotation.x -= rotVec.y * this.data.rotSpeed * sec;
-        // ограничение угла наклона
+        yawObj.rotation.y -= rotVec.x * this.data.rotSpeed * sec; // вправо — вправо
+        pitchObj.rotation.x -= rotVec.y * this.data.rotSpeed * sec; // вверх — вверх
         const lim = Math.PI/2 - 0.01;
         pitchObj.rotation.x = Math.max(-lim, Math.min(lim, pitchObj.rotation.x));
       }
 
-      // движение относительно НАПРАВЛЕНИЯ КАМЕРЫ по земле
+      // движение по земле (левый стик) относительно направления камеры
       if (moveActive){
         const fwd = new THREE.Vector3(); camEl.object3D.getWorldDirection(fwd);
         fwd.y = 0; fwd.normalize(); if (fwd.lengthSq()<1e-6) fwd.set(0,0,-1);
         const right = new THREE.Vector3().crossVectors(fwd, new THREE.Vector3(0,1,0)).normalize();
         const speed = this.data.moveSpeed * sec;
-        // джойстик: up = вперёд, left = влево
         const dX = right.x * moveVec.x * speed + fwd.x * moveVec.y * speed;
         const dZ = right.z * moveVec.x * speed + fwd.z * moveVec.y * speed;
         rig.object3D.position.x += dX;
@@ -180,37 +186,32 @@ if (isTouch){
   camEl.setAttribute('mobile-camera-control','moveSpeed:1.8; rotSpeed:1.8');
 }
 
-/* ===== кто движется для логики триггеров/хвоста: desktop — КАМЕРА; mobile — RIG ===== */
+/* ===== кто движется для триггеров/хвоста ===== */
 const moverEl = isTouch ? rig : camEl;
 
-/* ===== ПОП-АП: в МИРЕ, у ног, чуть впереди; всегда лицом к камере и поверх всего ===== */
-AFRAME.registerComponent('follow-video-panel',{
+/* ===== ПОП-АП (a-video): в мире, «у ног», виден гарантированно ===== */
+AFRAME.registerComponent('popup-video',{
   schema:{
     radius:{type:'number', default:2.0},
     video:{type:'selector'},
     width:{type:'number', default:1.2},
     height:{type:'number', default:0.68},
-    front:{type:'number', default:0.8},   // насколько вперёд от позиции игрока
-    elev:{type:'number', default:0.45},   // высота над уровнем земли у игрока
+    front:{type:'number', default:1.0},   // вперёд от игрока
+    elev:{type:'number', default:0.45},   // высота над землёй
     right:{type:'number', default:0.0},
     loops:{type:'number', default:3},
     hysteresis:{type:'number', default:0.10}
   },
   init(){
     this.active=false; this.waitExit=false; this.looped=0;
-    this.panel = document.getElementById('videoBoard');
-    this.panel.setAttribute('width',  this.data.width);
-    this.panel.setAttribute('height', this.data.height);
-    // гарантии видимости
-    this.panel.object3D.frustumCulled = false;
-    this.panel.object3D.renderOrder = 9999;
-    this.panel.getObject3D('mesh')?.traverse(o=>{ o.renderOrder=9999; });
-    this.video = (this.data.video || document.getElementById('clip1'));
-    this._onEnded = () => {
-      this.looped++;
-      if (this.looped < this.data.loops) { this.video.currentTime = 0; this.video.play().catch(()=>{}); }
-      else { this.hide(); this.waitExit = true; }
-    };
+    this.video = this.data.video || videoEl;
+    // подстрахуем обновление текстуры при готовности кадров
+    this.video.addEventListener('loadeddata', ()=>{
+      const mesh = videoBoard.getObject3D('mesh');
+      if (mesh && mesh.material && mesh.material.map){ mesh.material.map.needsUpdate = true; }
+    });
+    // кнопка P — форс показать (диагностика)
+    window.addEventListener('keydown', (e)=>{ if (e.key.toLowerCase() === 'p'){ this.show(true); }});
   },
   tick(){
     const mPos = moverEl.object3D.getWorldPosition(new THREE.Vector3());
@@ -218,40 +219,50 @@ AFRAME.registerComponent('follow-video-panel',{
     const distXZ = Math.hypot(mPos.x - tPos.x, mPos.z - tPos.z);
 
     if (this.waitExit && distXZ > (this.data.radius + this.data.hysteresis)) this.waitExit = false;
-    if (!this.active && !this.waitExit && distXZ <= this.data.radius) this.show();
+    if (!this.active && !this.waitExit && distXZ <= this.data.radius) this.show(false);
 
-    if (this.active){
-      // позиция панели: "у ног" игрока — впереди на front, на высоте elev от "земли"
-      const cam = camEl.object3D;
-      const camPos = cam.getWorldPosition(new THREE.Vector3());
-      const fwd = new THREE.Vector3(); cam.getWorldDirection(fwd); fwd.y=0; fwd.normalize(); if(fwd.lengthSq()<1e-6) fwd.set(0,0,-1);
-      const right = new THREE.Vector3().crossVectors(fwd, new THREE.Vector3(0,1,0)).normalize();
-      const groundY = camPos.y - 1.6;     // предполагаем рост 1.6м
-      const pos = new THREE.Vector3()
-        .set(mPos.x, groundY + this.data.elev, mPos.z)
-        .addScaledVector(fwd,  this.data.front)
-        .addScaledVector(right, this.data.right);
-      this.panel.object3D.position.copy(pos);
+    if (!this.active) return;
 
-      // поворачиваем лицом к камере по Y
-      const yaw = Math.atan2(camPos.x - pos.x, camPos.z - pos.z);
-      this.panel.object3D.rotation.set(0, yaw, 0);
-    }
+    // держим панель «у ног»: чуть впереди и немного выше земли, лицом к камере
+    const cam = camEl.object3D;
+    const camPos = cam.getWorldPosition(new THREE.Vector3());
+    const fwd = new THREE.Vector3(); cam.getWorldDirection(fwd); fwd.y=0; fwd.normalize(); if(fwd.lengthSq()<1e-6) fwd.set(0,0,-1);
+    const right = new THREE.Vector3().crossVectors(fwd, new THREE.Vector3(0,1,0)).normalize();
+    const groundY = camPos.y - 1.6; // рост 1.6
+    const pos = new THREE.Vector3()
+      .set(mPos.x, groundY + this.data.elev, mPos.z)
+      .addScaledVector(fwd,  this.data.front)
+      .addScaledVector(right, this.data.right);
+
+    videoGroup.object3D.position.copy(pos);
+    const yaw = Math.atan2(camPos.x - pos.x, camPos.z - pos.z);
+    videoGroup.object3D.rotation.set(0, yaw, 0);
+
+    // на всякий — просим обновить текстуру кадра
+    const mesh = videoBoard.getObject3D('mesh');
+    if (mesh && mesh.material && mesh.material.map){ mesh.material.map.needsUpdate = true; }
   },
-  show(){
+  show(force){
     this.active = true; this.looped = 0;
-    this.panel.setAttribute('visible', true);
+    videoGroup.setAttribute('visible', true);
+    // синхрон mute со «сценовым» аудио
     this.video.muted = amb.muted;
     this.video.loop = false;
-    this.video.removeEventListener('ended', this._onEnded);
-    this.video.addEventListener('ended', this._onEnded);
-    this.video.currentTime = 0;
-    // на iOS звук появится после тапа по 🔊 (мы синхронизируем muted), сама картинка — сразу
+    const onEnded = ()=> {
+      this.looped++;
+      if (this.looped < this.data.loops) { this.video.currentTime = 0; this.video.play().catch(()=>{}); }
+      else { this.hide(); this.waitExit = true; }
+    };
+    this._onEnded && this.video.removeEventListener('ended', this._onEnded);
+    this._onEnded = onEnded;
+    this.video.addEventListener('ended', onEnded);
+
+    // запускаем воспроизведение (картинка должна появиться сразу)
     this.video.play().catch(()=>{});
   },
   hide(){
     this.video.pause();
-    this.panel.setAttribute('visible', false);
+    videoGroup.setAttribute('visible', false);
     this.active = false;
   }
 });
@@ -276,7 +287,7 @@ AFRAME.registerComponent('follow-video-panel',{
     const fwd = new THREE.Vector3(); cam.getWorldDirection(fwd); fwd.y=0; fwd.normalize(); if(fwd.lengthSq()<1e-6) fwd.set(0,0,-1);
     const right = new THREE.Vector3().crossVectors(fwd,new THREE.Vector3(0,1,0)).normalize();
     const mPos = mover.getWorldPosition(new THREE.Vector3());
-    const triggers = Array.from(document.querySelectorAll('.trigger,[follow-video-panel],[anchor-video-panel]'));
+    const triggers = Array.from(document.querySelectorAll('.trigger'));
 
     ctx.clearRect(0,0,c.width,c.height);
     ctx.lineWidth=1; ring(R,0.25); ring(R*0.66,0.18); ring(R*0.33,0.14);
@@ -302,13 +313,13 @@ AFRAME.registerComponent('follow-video-panel',{
   },80);
 })();
 
-/* ===== «ХВОСТ» — 10× плотнее, жизнь 15с, устойчив к tab switch ===== */
+/* ===== «ХВОСТ»: очень плотный, 15 с жизни, устойчив к tab switch ===== */
 AFRAME.registerComponent('crumb-trail',{
   schema:{
-    step:{type:'number', default:0.006},      // 10× плотнее, чем было 0.06
+    step:{type:'number', default:0.004},      // ещё плотнее
     radius:{type:'number', default:0.007},
     color:{type:'color',  default:'#00e0ff'},
-    fadeSeconds:{type:'number', default:15},  // по твоей просьбе 15 сек
+    fadeSeconds:{type:'number', default:15},  // ровно 15 сек
     max:{type:'number', default:15000},       // переопределим ниже
     y:{type:'number', default:0.03}
   },
@@ -356,9 +367,9 @@ AFRAME.registerComponent('crumb-trail',{
   }
 });
 
-/* навешиваем след: desktop 30000, mobile 15000 */
+/* лимит хвоста: desktop 30000, mobile 15000 */
 const trailMax = isTouch ? 15000 : 30000;
-(isTouch ? rig : camEl).setAttribute('crumb-trail', `step:0.006; radius:0.007; color:#00e0ff; fadeSeconds:15; max:${trailMax}; y:0.03`);
+(isTouch ? rig : camEl).setAttribute('crumb-trail', `step:0.004; radius:0.007; color:#00e0ff; fadeSeconds:15; max:${trailMax}; y:0.03`);
 </script>
 </body>
 </html>
