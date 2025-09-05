@@ -7,7 +7,7 @@
   <meta name="theme-color" content="#000000" />
   <!-- A-Frame -->
   <script src="https://cdn.jsdelivr.net/npm/aframe@1.7.0/dist/aframe.min.js"></script>
-  <!-- NippleJS (джойстики) -->
+  <!-- NippleJS (для мобайла) -->
   <script src="https://cdn.jsdelivr.net/npm/nipplejs@0.10.1/dist/nipplejs.min.js"></script>
 
   <style>
@@ -29,7 +29,7 @@
       z-index:20; pointer-events:none
     }
 
-    /* два джойстика — низ слева/справа (показываем только на тач-устройствах) */
+    /* два джойстика — низ слева/справа (показываем только на мобайле) */
     .joy{ position:fixed; bottom:18px; width:160px; height:160px; z-index:25; touch-action:none; opacity:.95; display:none; }
     #joy-move{ left:18px; }
     #joy-rot { right:18px; }
@@ -77,7 +77,7 @@
   <!-- улица -->
   <a-entity gltf-model="#street" position="0 0 0"></a-entity>
 
-  <!-- триггер(ы) поп-апа. Клонируй, меняя position -->
+  <!-- триггер(ы) поп-апа -->
   <a-entity class="trigger"
             position="6.088 0.0 1.772"
             follow-video-panel="radius:2.0; video:#clip1; width:0.9; height:0.9; forward:1.2; right:0.35; loops:3; hysteresis:0.10">
@@ -88,7 +88,7 @@
            material="src:#clip1; shader:flat; side:double"></a-plane>
 </a-scene>
 
-<!-- фоновая музыка: играет в фоне; кнопка только мьютит/анмьютит -->
+<!-- фоновая музыка -->
 <audio id="amb"
        src="assets/audio/Analog_Mannequin%20Milk%20Cassette%20X.mp3%20-%20Demo.mp3"
        preload="auto" loop></audio>
@@ -121,9 +121,13 @@ setInterval(()=>{
   hud.textContent = `x:${fmt(p.x)}  y:${fmt(p.y)}  z:${fmt(p.z)}`;
 }, 200);
 
-/* ===================== ДВА ДЖОЙСТИКА (только на тач-устройствах) ===================== */
+/* ======== надёжный детектор мобайла/тача: только тогда показываем джойстики ======== */
 const rig = document.getElementById('rig');
-const isTouch = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
+const isTouch = AFRAME.utils.device.isMobile() ||
+                navigator.maxTouchPoints > 0 ||
+                window.matchMedia('(pointer: coarse)').matches;
+
+/* ===================== ДВА ДЖОЙСТИКА (только мобильные) ===================== */
 let moveActive=false, rotActive=false, moveVec={x:0,y:0}, rotVec={x:0,y:0}, rigYaw=0;
 
 if (isTouch){
@@ -140,31 +144,28 @@ if (isTouch){
   jr.on('move', (_, d)=>{ if(!d||!d.vector) return; rotActive=true; rotVec.x=d.vector.x; rotVec.y=d.vector.y; });
   jr.on('end', ()=>{ rotActive=false; rotVec.x=0; rotVec.y=0; });
 
-  // на мобиле выключаем мышиные повороты (будет гироскоп + правый стик)
+  // на мобайле — без мышиных поворотов (гироскоп + правый стик)
   camEl.setAttribute('look-controls', 'touchEnabled:false; mouseEnabled:false');
 }
 
-/* перемещение и поворот от стиков (мобайл) — движение относительно ориентации RIG */
+/* перемещение и поворот от стиков (только мобильные) */
 AFRAME.registerComponent('dual-stick',{
-  schema:{ speed:{type:'number', default:1.6}, rotSpeed:{type:'number', default:2.5} }, // rotSpeed рад/с при max отклонении
+  schema:{ speed:{type:'number', default:1.6}, rotSpeed:{type:'number', default:2.5} },
   tick: function(time, dt){
-    if (!isTouch) return; // на десктопе не трогаем — там WASD и мышь
+    if (!isTouch) return; // десктоп — WASD + мышь
     const sec = Math.min(0.05, dt/1000);
 
     // поворот rig по Y правым стиком
     if (rotActive){
-      rigYaw += rotVec.x * this.data.rotSpeed * sec; // вправо +, влево -
+      rigYaw += rotVec.x * this.data.rotSpeed * sec;
       rig.object3D.rotation.y = rigYaw;
     }
-
     // движение относительно ориентации rig (вперёд — локальный -Z)
     if (moveActive){
       const yaw = rig.object3D.rotation.y;
       const cos = Math.cos(yaw), sin = Math.sin(yaw);
-      // moveVec.y: вперёд +, назад -
       const localF = this.data.speed * moveVec.y * sec; // вдоль -Z
       const localR = this.data.speed * moveVec.x * sec; // вдоль +X
-      // поворот в мир
       const dX =  localR * cos + localF * sin;
       const dZ = -localR * sin - localF * cos;
       const p = rig.object3D.position; p.x += dX; p.z += dZ;
@@ -298,14 +299,14 @@ AFRAME.registerComponent('follow-video-panel',{
   setInterval(tickRadar, 80);
 })();
 
-/* ===================== «ХВОСТ» ИЗ ТОЧЕК (циан, мелкие, больше, дольше) ===================== */
+/* ===================== «ХВОСТ» ИЗ ТОЧЕК — мелкий, длиннее на desktop ===================== */
 AFRAME.registerComponent('crumb-trail',{
   schema:{
     step:{type:'number', default:0.6},
-    radius:{type:'number', default:0.035},        // меньше
+    radius:{type:'number', default:0.007},        // очень мелкие точки
     color:{type:'color',  default:'#00e0ff'},     // циан
-    fadeSeconds:{type:'number', default:75},      // x3
-    max:{type:'number', default:750},             // x3
+    fadeSeconds:{type:'number', default:75},      // живут дольше
+    max:{type:'number', default:750},             // базово (мобайл)
     y:{type:'number', default:0.03}
   },
   init(){ this.last=null; this.pool=[]; this.active=[]; this.tmp=new THREE.Vector3(); },
@@ -349,7 +350,10 @@ AFRAME.registerComponent('crumb-trail',{
     }
   }
 });
-rig.setAttribute('crumb-trail','step:0.6; radius:0.035; color:#00e0ff; fadeSeconds:75; max:750; y:0.03');
+
+/* навешиваем след: на desktop удваиваем лимит точек */
+const trailMax = isTouch ? 750 : 1500;
+rig.setAttribute('crumb-trail', `step:0.6; radius:0.007; color:#00e0ff; fadeSeconds:75; max:${trailMax}; y:0.03`);
 </script>
 </body>
 </html>
