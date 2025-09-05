@@ -12,29 +12,41 @@
     html,body{ margin:0; height:100%; background:#000; overflow:hidden; }
     a-loading-screen{ display:none !important; } /* убираем голубой экран/точки */
 
+    /* mute — левый верх */
     #mute{
       position:fixed; left:12px; top:12px; padding:10px; border:0; border-radius:10px;
       background:#111; color:#fff; font:20px/1 system-ui; box-shadow:0 4px 16px rgba(0,0,0,.2);
-      z-index:30; cursor:pointer;
+      z-index:40; cursor:pointer;
     }
 
-    #hud{
-      position:fixed; left:10px; bottom:10px; background:rgba(0,0,0,.6); color:#fff;
-      font:12px system-ui; padding:6px 8px; border-radius:8px; z-index:20; pointer-events:none;
+    /* HUD-попап — слева, поверх сцены */
+    #popup {
+      position:fixed; left:12px; top:25%; width:280px; aspect-ratio:16/9;
+      background:#000; border:1px solid rgba(255,255,255,.25); border-radius:8px;
+      box-shadow:0 10px 30px rgba(0,0,0,.45);
+      overflow:hidden; z-index:35; display:none;
     }
+    #popup video{ width:100%; height:100%; display:block; }
 
-    /* джойстики — только мобайл */
-    .joy{ position:fixed; bottom:18px; width:160px; height:160px; z-index:25; touch-action:none; opacity:.95; display:none; }
+    /* радар — правый верх; размер задаём из JS */
+    #radar{ position:fixed; right:12px; top:12px; z-index:34; pointer-events:none; }
+    #radar canvas{ width:100%; height:100%; display:block; }
+
+    /* джойстики (только мобильные) */
+    .joy{ position:fixed; bottom:18px; width:160px; height:160px; z-index:33; touch-action:none; opacity:.95; display:none; }
     #joy-move{ left:18px; }  #joy-rot{ right:18px; }
     .joy::before{ content:''; position:absolute; inset:0; border-radius:50%;
       background:radial-gradient(circle at 50% 50%, rgba(255,255,255,.15), rgba(0,0,0,.2));
       box-shadow:0 8px 28px rgba(0,0,0,.25); }
 
-    /* радар — правый верх; размер задаём из JS */
-    #radar{ position:fixed; right:12px; top:12px; z-index:26; pointer-events:none; }
-    #radar canvas{ width:100%; height:100%; display:block; }
-
+    /* хвост */
     .dot{ mix-blend-mode: screen; }
+
+    /* координаты (отладка, можно скрыть) */
+    #hud{
+      position:fixed; left:10px; bottom:10px; background:rgba(0,0,0,.6); color:#fff;
+      font:12px system-ui; padding:6px 8px; border-radius:8px; z-index:20; pointer-events:none;
+    }
   </style>
 </head>
 <body>
@@ -65,20 +77,18 @@
   <!-- модель улицы -->
   <a-entity gltf-model="#street" position="0 0 0"></a-entity>
 
-  <!-- триггер(ы) поп-апа -->
+  <!-- триггер поп-апа -->
   <a-entity class="trigger"
             position="6.088 0.0 1.772"
-            popup-video="radius:2.0; video:#clip1; width:1.4; height:0.8; hudX:0.26; hudY:-0.12; hudZ:-1.05; loops:3; hysteresis:0.10">
+            popup-video-hud="radius:2.0; video:#clip1; loops:3; hysteresis:0.10">
   </a-entity>
 
-  <!-- ГРУППА ПОПАПА: видео + подложка-рамка (будет крепиться к КАМЕРЕ) -->
-  <a-entity id="videoGroup" visible="false">
-    <a-plane id="videoFrame" width="1.48" height="0.86" position="0 0 -0.01"
-             material="color:#000; shader:flat; depthTest:false; depthWrite:false; transparent:true; opacity:0.85"></a-plane>
-    <a-video id="videoBoard" src="#clip1" width="1.4" height="0.8"
-             material="shader:flat; side:double; depthTest:false; depthWrite:false; transparent:true; opacity:1"></a-video>
-  </a-entity>
 </a-scene>
+
+<!-- HUD-попап (HTML) -->
+<div id="popup">
+  <video id="popupVid" src="assets/video/clip1.mp4" playsinline webkit-playsinline muted preload="metadata"></video>
+</div>
 
 <!-- фоновая музыка -->
 <audio id="amb" src="assets/audio/Analog_Mannequin%20Milk%20Cassette%20X.mp3%20-%20Demo.mp3" preload="auto" loop></audio>
@@ -91,7 +101,7 @@
 <div id="radar"><canvas id="radarCanvas"></canvas></div>
 
 <script>
-/* ===== Звук: mute/unmute без перезапуска ===== */
+/* ===== звук: mute/unmute без перезапуска ===== */
 const amb = document.getElementById('amb');
 const muteBtn = document.getElementById('mute');
 let audioStarted = false;
@@ -99,7 +109,7 @@ function ensurePlayOnce(){ if (audioStarted) return; audioStarted = true; amb.mu
 function updateMuteIcon(){ muteBtn.textContent = amb.muted ? '🔇' : '🔊'; }
 muteBtn.addEventListener('click', ()=>{
   ensurePlayOnce(); amb.muted = !amb.muted; updateMuteIcon();
-  document.querySelectorAll('video').forEach(v=>v.muted = amb.muted);
+  document.querySelectorAll('video').forEach(v=>v.muted = amb.muted); // синхронизируем
 });
 ['click','touchstart'].forEach(ev=>window.addEventListener(ev, ensurePlayOnce));
 updateMuteIcon();
@@ -107,12 +117,11 @@ updateMuteIcon();
 /* ===== базовые ссылки ===== */
 const rig = document.getElementById('rig');
 const camEl = document.getElementById('player');
-const videoEl = document.getElementById('clip1');
-const videoGroup = document.getElementById('videoGroup');
-const videoBoard = document.getElementById('videoBoard');
-
-/* ===== HUD ===== */
 const hud = document.getElementById('hud');
+const popupWrap = document.getElementById('popup');
+const popupVid  = document.getElementById('popupVid');
+
+/* ===== HUD-координаты (отладка) ===== */
 function fmt(n){return Number(n).toFixed(3)}
 setInterval(()=>{
   const p = camEl.object3D.getWorldPosition(new THREE.Vector3());
@@ -132,8 +141,8 @@ if (!isTouch){
 }
 
 /* ===== Мобайл: стики БЕЗ инверсии =====
-   Левый — движение относительно ВЗГЛЯДА КАМЕРЫ (up=вперёд, left=влево).
-   Правый — yaw (влево/вправо) + pitch (вверх/вниз) как у геймпада. */
+   — Левый: движение относительно взгляда камеры (up=вперёд, left=влево, right=вправо).
+   — Правый: yaw (влево/вправо) + pitch (вверх/вниз) как на геймпаде. */
 let moveActive=false, rotActive=false, moveVec={x:0,y:0}, rotVec={x:0,y:0};
 if (isTouch){
   const jmWrap = document.getElementById('joy-move');
@@ -154,65 +163,54 @@ if (isTouch){
     schema:{ moveSpeed:{default:1.8}, rotSpeed:{default:1.8} },
     tick: function(t, dt){
       const sec = Math.min(0.05, dt/1000);
-      const lc = camEl.components['look-controls'];
-      if (!lc) return;
+      const lc = camEl.components['look-controls']; if (!lc) return;
 
-      // ПРАВЫЙ стик: yaw и pitch (без инверсии)
+      // ПРАВЫЙ: yaw/pitch без инверсии (лево=лево, право=право)
       if (rotActive){
         const yawObj = lc.yawObject, pitchObj = lc.pitchObject;
-        // вправо — вправо (yaw +), вверх — вверх (pitch -)
-        yawObj.rotation.y += rotVec.x * this.data.rotSpeed * sec;
-        pitchObj.rotation.x += rotVec.y * this.data.rotSpeed * sec; // up даёт y<0 → x уменьшится → взгляд вверх
+        yawObj.rotation.y += rotVec.x * this.data.rotSpeed * sec;     // ← отрицат., → положит.
+        pitchObj.rotation.x -= rotVec.y * this.data.rotSpeed * sec;   // ↑ отрицат. -> взгляд вверх
         const lim = Math.PI/2 - 0.01;
         pitchObj.rotation.x = Math.max(-lim, Math.min(lim, pitchObj.rotation.x));
       }
 
-      // ЛЕВЫЙ стик: движение по земле относительно взгляда камеры
+      // ЛЕВЫЙ: движение по земле относительно взгляда камеры
       if (moveActive){
         const fwd = new THREE.Vector3(); camEl.object3D.getWorldDirection(fwd);
         fwd.y = 0; fwd.normalize(); if (fwd.lengthSq()<1e-6) fwd.set(0,0,-1);
         const right = new THREE.Vector3().crossVectors(fwd, new THREE.Vector3(0,1,0)).normalize();
         const speed = this.data.moveSpeed * sec;
-        const forward = -moveVec.y; // up (y<0) -> положительное движение вперёд
-        const strafe  =  moveVec.x; // left<0, right>0 — естественно
-        const dX = right.x * strafe * speed + fwd.x * forward * speed;
-        const dZ = right.z * strafe * speed + fwd.z * forward * speed;
-        rig.object3D.position.x += dX;
-        rig.object3D.position.z += dZ;
+        const forward = -moveVec.y;         // up (y<0) -> вперёд +
+        const strafe  =  moveVec.x;         // left<0 -> влево, right>0 -> вправо  (БЕЗ инверсии)
+        rig.object3D.position.x += (right.x * strafe + fwd.x * forward) * speed;
+        rig.object3D.position.z += (right.z * strafe + fwd.z * forward) * speed;
       }
     }
   });
   camEl.setAttribute('mobile-camera-control','moveSpeed:1.8; rotSpeed:1.8');
 }
 
-/* ===== кто движется для логики ===== */
+/* ===== кто движется для логики триггеров/хвоста ===== */
 const moverEl = isTouch ? rig : camEl;
 
-/* ===== ПОП-АП: КАМЕРНЫЙ HUD (гарантированно виден) =====
-   При показе — прикрепляем группу к КАМЕРЕ и ставим в локальные координаты (hudX/Y/Z). */
-AFRAME.registerComponent('popup-video',{
+/* ===== ПОП-АП КАК HUD (HTML-оверлей слева) ===== */
+AFRAME.registerComponent('popup-video-hud',{
   schema:{
     radius:{type:'number', default:2.0},
     video:{type:'selector'},
-    width:{type:'number', default:1.4},
-    height:{type:'number', default:0.8},
-    hudX:{type:'number', default:0.26},   // вправо от центра
-    hudY:{type:'number', default:-0.12},  // чуть ниже центра
-    hudZ:{type:'number', default:-1.05},  // «на расстоянии руки»
     loops:{type:'number', default:3},
     hysteresis:{type:'number', default:0.10}
   },
   init(){
     this.active=false; this.waitExit=false; this.looped=0;
-    this.video = this.data.video || videoEl;
+    this.video = this.data.video || popupVid;
 
-    // Фикс редких случаев: обновить текстуру при готовности кадров
-    this.video.addEventListener('loadeddata', ()=>{
-      const mesh = videoBoard.getObject3D('mesh');
-      if (mesh && mesh.material && mesh.material.map){ mesh.material.map.needsUpdate = true; }
-    });
+    // синхронизируем mute и на готовности кадров просто убеждаемся, что видно
+    const syncMute = ()=>{ this.video.muted = amb.muted; };
+    syncMute();
+    muteBtn.addEventListener('click', syncMute);
 
-    // Клавиша P — принудительный показ (для проверки)
+    // принудительный показ клавишей P (десктоп)
     window.addEventListener('keydown', (e)=>{ if (e.key.toLowerCase()==='p') this.show(true); });
   },
   tick(){
@@ -225,18 +223,8 @@ AFRAME.registerComponent('popup-video',{
   },
   show(force){
     this.active = true; this.looped = 0;
+    popupWrap.style.display = 'block';
 
-    // крепим HUD к камере (гарантированная видимость)
-    if (videoGroup.parentNode !== camEl) camEl.appendChild(videoGroup);
-    videoGroup.setAttribute('visible', true);
-    videoGroup.object3D.position.set(this.data.hudX, this.data.hudY, this.data.hudZ);
-    videoGroup.object3D.rotation.set(0, 0, 0);
-
-    // синхрон mute со сценой
-    this.video.muted = amb.muted;
-    this.video.loop = false;
-
-    // обработчик окончаний
     const onEnded = ()=> {
       this.looped++;
       if (this.looped < this.data.loops) { this.video.currentTime = 0; this.video.play().catch(()=>{}); }
@@ -246,12 +234,12 @@ AFRAME.registerComponent('popup-video',{
     this._onEnded = onEnded;
     this.video.addEventListener('ended', onEnded);
 
-    // запуск видео (картинка должна появиться сразу)
+    // гарантированный старт (на iOS — muted=true после первого тапа уже есть)
     this.video.play().catch(()=>{});
   },
   hide(){
     this.video.pause();
-    videoGroup.setAttribute('visible', false);
+    popupWrap.style.display = 'none';
     this.active = false;
   }
 });
@@ -309,7 +297,7 @@ AFRAME.registerComponent('crumb-trail',{
     radius:{type:'number', default:0.007},
     color:{type:'color',  default:'#00e0ff'},
     fadeSeconds:{type:'number', default:15},
-    max:{type:'number', default:15000},
+    max:{type:'number', default: isTouch ? 15000 : 30000},
     y:{type:'number', default:0.03}
   },
   init(){
@@ -355,10 +343,15 @@ AFRAME.registerComponent('crumb-trail',{
     }
   }
 });
+(isTouch ? rig : camEl).setAttribute('crumb-trail','step:0.004; radius:0.007; color:#00e0ff; fadeSeconds:15; max:30000; y:0.03');
 
-/* лимит хвоста: desktop 30000, mobile 15000 */
-const trailMax = isTouch ? 15000 : 30000;
-(isTouch ? rig : camEl).setAttribute('crumb-trail', `step:0.004; radius:0.007; color:#00e0ff; fadeSeconds:15; max:${trailMax}; y:0.03`);
+/* ===== DIAG: клавиша P — принудительно показать поп-ап ===== */
+window.addEventListener('keydown', e=>{
+  if (e.key.toLowerCase()==='p'){
+    const trig = document.querySelector('.trigger');
+    trig.components['popup-video-hud']?.show(true);
+  }
+});
 </script>
 </body>
 </html>
