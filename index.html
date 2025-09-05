@@ -11,14 +11,21 @@
     *{ -webkit-tap-highlight-color:transparent; }
     html,body{ margin:0; height:100%; background:#000; overflow:hidden; }
 
+    /* прячем дефолтный лоадер A-Frame */
+    a-loading-screen{ display:none !important; }
+
     /* иконка mute/unmute — левый верх */
-    #mute{ position:fixed; left:12px; top:12px; padding:10px; border:0; border-radius:10px;
+    #mute{
+      position:fixed; left:12px; top:12px; padding:10px; border:0; border-radius:10px;
       background:#111; color:#fff; font:20px/1 system-ui; box-shadow:0 4px 16px rgba(0,0,0,.2);
-      z-index:30; cursor:pointer }
+      z-index:30; cursor:pointer;
+    }
 
     /* координаты (для отладки) */
-    #hud{ position:fixed; left:10px; bottom:10px; background:rgba(0,0,0,.6); color:#fff;
-      font:12px system-ui; padding:6px 8px; border-radius:8px; z-index:20; pointer-events:none }
+    #hud{
+      position:fixed; left:10px; bottom:10px; background:rgba(0,0,0,.6); color:#fff;
+      font:12px system-ui; padding:6px 8px; border-radius:8px; z-index:20; pointer-events:none;
+    }
 
     /* два джойстика — показываем только на мобайле */
     .joy{ position:fixed; bottom:18px; width:160px; height:160px; z-index:25; touch-action:none; opacity:.95; display:none; }
@@ -27,7 +34,7 @@
       background:radial-gradient(circle at 50% 50%, rgba(255,255,255,.15), rgba(0,0,0,.2));
       box-shadow:0 8px 28px rgba(0,0,0,.25); }
 
-    /* радар (размер задаём из JS) — правый верх, прозрачный */
+    /* радар — правый верх; размер задаём из JS */
     #radar{ position:fixed; right:12px; top:12px; z-index:26; pointer-events:none; }
     #radar canvas{ width:100%; height:100%; display:block; }
 
@@ -36,7 +43,9 @@
   </style>
 </head>
 <body>
-<a-scene renderer="colorManagement:true" loading-screen="enabled:false" device-orientation-permission-ui="enabled:true">
+<a-scene renderer="colorManagement:true"
+         loading-screen="enabled:false"
+         device-orientation-permission-ui="enabled:true">
 
   <!-- ассеты -->
   <a-assets>
@@ -54,7 +63,9 @@
 
   <!-- RIG + камера -->
   <a-entity id="rig">
-    <a-entity id="player" camera="near:0.01; far:1000" look-controls="touchEnabled:false; mouseEnabled:true" position="0 1.6 0"></a-entity>
+    <a-entity id="player" camera="near:0.01; far:1000"
+              look-controls="touchEnabled:false; mouseEnabled:true"
+              position="0 1.6 0"></a-entity>
   </a-entity>
 
   <!-- модель улицы -->
@@ -63,7 +74,7 @@
   <!-- триггер(ы) поп-апа -->
   <a-entity class="trigger"
             position="6.088 0.0 1.772"
-            follow-video-panel="radius:2.0; video:#clip1; width:1.1; height:0.7; forward:1.25; right:0.0; loops:3; hysteresis:0.10">
+            follow-video-panel="radius:2.0; video:#clip1; width:1.1; height:0.7; forward:1.25; right:0.15; loops:3; hysteresis:0.10">
   </a-entity>
 
   <!-- плоскость панели (материал поверх всего) -->
@@ -79,12 +90,10 @@
 <div id="joy-move" class="joy"></div>
 <div id="joy-rot"  class="joy"></div>
 <div id="hud">x:0 y:0 z:0</div>
-
-<!-- адаптивный радар -->
 <div id="radar"><canvas id="radarCanvas"></canvas></div>
 
 <script>
-/* ===== звук: mute/unmute без перезапуска ===== */
+/* ===== ЗВУК: mute/unmute без перезапуска ===== */
 const amb = document.getElementById('amb');
 const muteBtn = document.getElementById('mute');
 let audioStarted = false;
@@ -107,59 +116,71 @@ setInterval(()=>{
 }, 200);
 
 /* ===== детектор мобайла ===== */
-const isTouch = AFRAME.utils.device.isMobile() || navigator.maxTouchPoints>0 || window.matchMedia('(pointer:coarse)').matches;
+const isTouch = AFRAME.utils.device.isMobile() ||
+                navigator.maxTouchPoints > 0 ||
+                window.matchMedia('(pointer: coarse)').matches;
 
-/* ===== WASD на десктопе — движение ВДОЛЬ ВЗГЛЯДА (двигаем КАМЕРУ) ===== */
+/* ===== Desktop: WASD двигает КАМЕРУ по взгляду (нативно) ===== */
 if (!isTouch){
-  camEl.setAttribute('wasd-controls','acceleration: 40');  // стандартный контрол A-Frame: вперёд = куда смотрит камера
+  camEl.setAttribute('wasd-controls','acceleration: 40');  // вперёд — туда, куда смотрит камера
 } else {
   // на мобайле мышиные повороты не нужны — будут стики/гиро
   camEl.setAttribute('look-controls','touchEnabled:false; mouseEnabled:false');
 }
 
-/* ===== два джойстика на мобайле (движение/поворот rig вокруг Y) ===== */
+/* ===== Мобайл: два стика, без инверсии (как у геймпада) ===== */
 let moveActive=false, rotActive=false, moveVec={x:0,y:0}, rotVec={x:0,y:0}, rigYaw=0;
 if (isTouch){
   const jmWrap = document.getElementById('joy-move');
   const jrWrap = document.getElementById('joy-rot');
   jmWrap.style.display='block'; jrWrap.style.display='block';
 
-  const jm = nipplejs.create({ zone: jmWrap, mode:'static', size:130, position:{left:'50%', top:'50%'}, color:'white', restOpacity:0.85 });
-  jm.on('move', (_, d)=>{ if(!d||!d.vector) return; moveActive=true; moveVec.x=d.vector.x; moveVec.y=-d.vector.y; });
+  const jm = nipplejs.create({ zone: jmWrap, mode:'static', size:130,
+    position:{left:'50%', top:'50%'}, color:'white', restOpacity:0.85 });
+  jm.on('move', (_, d)=>{ if(!d||!d.vector) return; moveActive=true; moveVec.x=d.vector.x; moveVec.y=d.vector.y; });
   jm.on('end', ()=>{ moveActive=false; moveVec.x=0; moveVec.y=0; });
 
-  const jr = nipplejs.create({ zone: jrWrap, mode:'static', size:130, position:{left:'50%', top:'50%'}, color:'white', restOpacity:0.85 });
-  jr.on('move', (_, d)=>{ if(!d||!d.vector) return; rotActive=true; rotVec.x=d.vector.x; rotVec.y=d.vector.y; });
-  jr.on('end', ()=>{ rotActive=false; rotVec.x=0; rotVec.y=0; });
+  const jr = nipplejs.create({ zone: jrWrap, mode:'static', size:130,
+    position:{left:'50%', top:'50%'}, color:'white', restOpacity:0.85 });
+  jr.on('move', (_, d)=>{ if(!d||!d.vector) return; rotActive=true; rotVec.x=d.vector.x; });
+  jr.on('end', ()=>{ rotActive=false; rotVec.x=0; });
 
   AFRAME.registerComponent('dual-stick',{
     schema:{ speed:{type:'number', default:1.6}, rotSpeed:{type:'number', default:2.8} },
     tick:function(t, dt){
       const sec = Math.min(0.05, dt/1000);
-      if (rotActive){ rigYaw += rotVec.x * this.data.rotSpeed * sec; rig.object3D.rotation.y = rigYaw; }
+      // поворот rig по Y правым стиком (влево — влево)
+      if (rotActive){
+        rigYaw += -rotVec.x * this.data.rotSpeed * sec; // инверсию убрали
+        rig.object3D.rotation.y = rigYaw;
+      }
+      // движение относительно ориентации rig (лево/право/вперёд/назад — как на геймпаде)
       if (moveActive){
         const yaw = rig.object3D.rotation.y, cos=Math.cos(yaw), sin=Math.sin(yaw);
-        const localF = this.data.speed * moveVec.y * sec, localR = this.data.speed * moveVec.x * sec;
-        rig.object3D.position.x +=  localR*cos + localF*sin;
-        rig.object3D.position.z += -localR*sin - localF*cos;
+        const mx = moveVec.x, my = -moveVec.y; // up = вперёд
+        const speed = this.data.speed * sec;
+        const dX = (mx * cos) - (my * sin);
+        const dZ = (-mx * sin) - (my * cos);
+        rig.object3D.position.x += dX * speed;
+        rig.object3D.position.z += dZ * speed;
       }
     }
   });
   rig.setAttribute('dual-stick','speed:1.6; rotSpeed:2.8');
 }
 
-/* ===== кто «двигается» сейчас: на десктопе — КАМЕРА, на мобайле — RIG ===== */
+/* ===== кто двигается: desktop — КАМЕРА; mobile — RIG ===== */
 const moverEl = isTouch ? rig : camEl;
 
-/* ===== поп-ап панель: всегда перед взглядом, поверх глубины ===== */
+/* ===== ПОП-АП: рендерим как "экран" в камере (всегда видно) ===== */
 AFRAME.registerComponent('follow-video-panel',{
   schema:{
     radius:{type:'number', default:2.0},
     video:{type:'selector'},
     width:{type:'number', default:1.1},
     height:{type:'number', default:0.7},
-    forward:{type:'number', default:1.25},
-    right:{type:'number', default:0.0},
+    forward:{type:'number', default:1.25},  // расстояние от камеры в метрах
+    right:{type:'number', default:0.15},    // смещение вправо
     loops:{type:'number', default:3},
     hysteresis:{type:'number', default:0.1}
   },
@@ -168,7 +189,8 @@ AFRAME.registerComponent('follow-video-panel',{
     this.panel = document.getElementById('videoBoard');
     this.panel.setAttribute('width',  this.data.width);
     this.panel.setAttribute('height', this.data.height);
-    this.video = this.data.video || document.getElementById('clip1');
+    this.video = (this.data.video || document.getElementById('clip1'));
+    this.origParent = this.panel.parentNode; // запомним исходного родителя
     this._onEnded = () => {
       this.looped++;
       if (this.looped < this.data.loops) { this.video.currentTime = 0; this.video.play().catch(()=>{}); }
@@ -176,34 +198,26 @@ AFRAME.registerComponent('follow-video-panel',{
     };
   },
   tick(){
-    // дистанция считаем от того, кто реально движется (moverEl)
+    // дистанция по XZ от движущегося объекта до триггера
     const mPos = moverEl.object3D.getWorldPosition(new THREE.Vector3());
     const tPos = this.el.object3D.getWorldPosition(new THREE.Vector3());
     const distXZ = Math.hypot(mPos.x - tPos.x, mPos.z - tPos.z);
 
     if (this.waitExit && distXZ > (this.data.radius + this.data.hysteresis)) this.waitExit = false;
     if (!this.active && !this.waitExit && distXZ <= this.data.radius) this.show();
-
-    if (this.active){
-      // ставим прямо перед камерой (в мировом пространстве), только по Y-повороту
-      const cam = camEl.object3D;
-      const camPos = cam.getWorldPosition(new THREE.Vector3());
-      const dir = new THREE.Vector3(); cam.getWorldDirection(dir);
-      const fwd = new THREE.Vector3(dir.x,0,dir.z).normalize(); if (fwd.lengthSq()<1e-6) fwd.set(0,0,-1);
-      const right = new THREE.Vector3().crossVectors(fwd,new THREE.Vector3(0,1,0)).normalize();
-      const pos = new THREE.Vector3().copy(camPos)
-        .addScaledVector(fwd,  this.data.forward)
-        .addScaledVector(right, this.data.right);
-      this.panel.object3D.position.copy(pos);
-
-      // поворот только по Y лицом к игроку
-      const yaw = Math.atan2(camPos.x - pos.x, camPos.z - pos.z);
-      this.panel.object3D.rotation.set(0, yaw, 0);
-    }
   },
   show(){
     this.active = true; this.looped = 0;
+    // переезжаем ПАНЕЛЬ ВНУТРЬ КАМЕРЫ (экран в экранных координатах)
+    if (this.panel.parentNode !== camEl){
+      camEl.appendChild(this.panel);
+    }
     this.panel.setAttribute('visible', true);
+    // локальная позиция относительно камеры: чуть вправо и вперёд
+    this.panel.object3D.position.set(this.data.right, 0, -this.data.forward);
+    this.panel.object3D.rotation.set(0, 0, 0);
+
+    // видео
     this.video.muted = amb.muted;
     this.video.loop = false;
     this.video.removeEventListener('ended', this._onEnded);
@@ -214,11 +228,13 @@ AFRAME.registerComponent('follow-video-panel',{
   hide(){
     this.video.pause();
     this.panel.setAttribute('visible', false);
+    // по желанию можно вернуть в корень сцены:
+    // if (this.panel.parentNode !== this.origParent) this.origParent.appendChild(this.panel);
     this.active = false;
   }
 });
 
-/* ===== радар: адаптивный размер (desktop крупнее) ===== */
+/* ===== РАДАР: адаптивный размер (desktop крупнее) ===== */
 (function(){
   const RADAR_SIZE = (!isTouch ? 200 : 110);
   const radar = document.getElementById('radar');
@@ -264,18 +280,26 @@ AFRAME.registerComponent('follow-video-panel',{
   },80);
 })();
 
-/* ===== «хвост» из точек — в 10 раз больше ===== */
+/* ===== «ХВОСТ» из точек — плотнее (x10), устойчив к переключению вкладок ===== */
 AFRAME.registerComponent('crumb-trail',{
   schema:{
-    step:{type:'number', default:0.6},
+    step:{type:'number', default:0.06},      // было 0.6 → теперь в 10 раз чаще
     radius:{type:'number', default:0.007},
     color:{type:'color',  default:'#00e0ff'},
     fadeSeconds:{type:'number', default:75},
-    max:{type:'number', default:750},   // базовое значение, ниже мы переопределим
+    max:{type:'number', default:750},        // переопределим ниже под платформу
     y:{type:'number', default:0.03}
   },
-  init(){ this.last=null; this.pool=[]; this.active=[]; this.tmp=new THREE.Vector3(); },
+  init(){
+    this.last=null; this.pool=[]; this.active=[]; this.tmp=new THREE.Vector3();
+    this.forceReset=false;
+    // после возврата с другой вкладки — мягкий ресет, чтобы снова «посыпались» точки
+    document.addEventListener('visibilitychange', ()=>{
+      if (!document.hidden) this.forceReset = true;
+    });
+  },
   tick(){
+    if (this.forceReset){ this.last=null; this.forceReset=false; }
     const pos = this.el.object3D.getWorldPosition(this.tmp);
     const here = new THREE.Vector3(pos.x, this.data.y, pos.z);
     if (!this.last){ this.last = here.clone(); this.drop(here); return; }
@@ -314,9 +338,9 @@ AFRAME.registerComponent('crumb-trail',{
   }
 });
 
-/* вешаем след: desktop 15000, mobile 7500 */
+/* навешиваем след: desktop 15000, mobile 7500 (и шаг уже x10 плотнее) */
 const trailMax = isTouch ? 7500 : 15000;
-moverEl.setAttribute('crumb-trail', `step:0.6; radius:0.007; color:#00e0ff; fadeSeconds:75; max:${trailMax}; y:0.03`);
+moverEl.setAttribute('crumb-trail', `step:0.06; radius:0.007; color:#00e0ff; fadeSeconds:75; max:${trailMax}; y:0.03`);
 </script>
 </body>
 </html>
