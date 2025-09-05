@@ -12,7 +12,6 @@
     html,body{ margin:0; height:100%; background:#000; overflow:hidden; }
     a-loading-screen{ display:none !important; }
 
-    /* mute */
     #mute{
       position:fixed; left:12px; top:12px; padding:10px; border:0; border-radius:10px;
       background:#111; color:#fff; font:20px/1 system-ui; box-shadow:0 4px 16px rgba(0,0,0,.2);
@@ -23,7 +22,7 @@
     #radar{ position:fixed; right:12px; top:12px; z-index:34; pointer-events:none; }
     #radar canvas{ width:100%; height:100%; display:block; }
 
-    /* Поп-ап HUD: квадрат, ширина = ширине радара, под радаром */
+    /* Поп-ап HUD: квадрат, ширина = ширине радара, под радаром справа */
     #popup {
       position:fixed; right:12px; background:#000;
       border:1px solid rgba(255,255,255,.25); border-radius:8px;
@@ -40,27 +39,28 @@
       background:radial-gradient(circle at 50% 50%, rgba(255,255,255,.15), rgba(0,0,0,.2));
       box-shadow:0 8px 28px rgba(0,0,0,.25); }
 
-    /* Хвост */
+    /* хвост */
     .dot{ mix-blend-mode: screen; }
 
-    /* Координаты (отладка) */
+    /* отладка позы */
     #hud{
       position:fixed; left:10px; bottom:10px; background:rgba(0,0,0,.6); color:#fff;
       font:12px system-ui; padding:6px 8px; border-radius:8px; z-index:20; pointer-events:none;
     }
 
-    /* ЭКРАН ЗАГРУЗКИ — три точки + тексты */
+    /* Экран загрузки */
     #boot{
       position:fixed; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center;
       background:#000; color:#fff; z-index:100;
       font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
+      text-align:center;
     }
     .dots{ display:flex; gap:10px; margin-bottom:16px; }
     .dot3{ width:10px; height:10px; border-radius:50%; background:#fff; opacity:.85; animation: b 1.2s infinite ease-in-out; }
     .dot3:nth-child(2){ animation-delay:.15s } .dot3:nth-child(3){ animation-delay:.30s }
     @keyframes b{ 0%,80%,100%{ transform:scale(0.4); opacity:.5 } 40%{ transform:scale(1); opacity:1 } }
     .gr{ font-size:18px; letter-spacing:.3px; margin-bottom:6px; }
-    .en{ font-size:12px; opacity:.8; letter-spacing:.2px; }
+    .en{ font-size:12px; opacity:.85; letter-spacing:.2px; }
   </style>
 </head>
 <body>
@@ -76,8 +76,7 @@
   <a-assets>
     <img id="skyTex" src="assets/images/sky.jpg" crossorigin="anonymous">
     <a-asset-item id="street" src="assets/models/Limasol_Street%20(2).glb"></a-asset-item>
-
-    <!-- видео-ассет -->
+    <!-- оставляем как ассет, но воспроизводить будем overlay-видео -->
     <video id="clip1" src="assets/video/clip1.mp4" preload="metadata"
            playsinline webkit-playsinline muted crossorigin="anonymous"></video>
   </a-assets>
@@ -98,15 +97,14 @@
   <!-- триггер попапа -->
   <a-entity class="trigger"
             position="6.088 0.0 1.772"
-            popup-video-hud="radius:2.0; video:#clip1; loops:2; hysteresis:0.10">
+            popup-video-hud="radius:2.0; loops:2; hysteresis:0.10">
   </a-entity>
 
 </a-scene>
 
-<!-- Поп-ап-HUD -->
+<!-- Поп-ап HUD (единственный видео-элемент, которым мы управляем) -->
 <div id="popup">
-  <video id="popupVid" src="assets/video/clip1.mp4"
-         playsinline webkit-playsinline muted preload="metadata"></video>
+  <video id="popupVid" playsinline webkit-playsinline muted preload="metadata"></video>
 </div>
 
 <!-- Фоновая музыка -->
@@ -130,7 +128,7 @@ function ensurePlayOnce(){
   audioStarted = true;
   amb.muted = true; popupVid.muted = true;
   amb.play().catch(()=>{});
-  // «разблокируем» видеодекодер жестом: краткий старт/пауза
+  // короткий старт/пауза, чтобы iOS «разбудить» видеодекодер
   popupVid.play().then(()=>{ popupVid.pause(); }).catch(()=>{});
 }
 function updateMuteIcon(){ muteBtn.textContent = amb.muted ? '🔇' : '🔊'; }
@@ -143,34 +141,31 @@ muteBtn.addEventListener('click', ()=>{
 ['click','touchstart'].forEach(ev=>window.addEventListener(ev, ensurePlayOnce));
 updateMuteIcon();
 
-/* ===== ссылки ===== */
+/* ===== ссылки/лоадер ===== */
 const rig = document.getElementById('rig');
 const camEl = document.getElementById('player');
 const hud = document.getElementById('hud');
 const popupWrap = document.getElementById('popup');
-
-/* ===== загрузчик уходим, когда модель улицы готова ===== */
 const boot = document.getElementById('boot');
 const streetEntity = document.getElementById('streetEntity');
 function hideBoot(){ boot.style.display = 'none'; }
 streetEntity.addEventListener('model-loaded', hideBoot);
-setTimeout(hideBoot, 10000); // аварийно на всякий случай
+setTimeout(hideBoot, 10000); // аварийная защита
 
-/* ===== отладка позы ===== */
+/* ===== отладка координат ===== */
 function fmt(n){return Number(n).toFixed(3)}
 setInterval(()=>{
   const p = camEl.object3D.getWorldPosition(new THREE.Vector3());
   hud.textContent = `x:${fmt(p.x)}  y:${fmt(p.y)}  z:${fmt(p.z)}`;
 }, 200);
 
-/* ===== мобайл/десктоп размеры ===== */
+/* ===== размеры радара/попапа ===== */
 const isTouch = AFRAME.utils.device.isMobile() ||
                 navigator.maxTouchPoints > 0 ||
                 window.matchMedia('(pointer: coarse)').matches;
 const JOY_SIZE = 160;
 const RADAR_SIZE = (!isTouch ? 400 : JOY_SIZE);
 const RADAR_MARGIN = 12;
-
 (function placeRadarAndPopup(){
   const radar = document.getElementById('radar');
   const c = document.getElementById('radarCanvas');
@@ -190,7 +185,7 @@ if (!isTouch){
   camEl.setAttribute('look-controls','touchEnabled:false; mouseEnabled:false');
 }
 
-/* ===== Мобайл: стики (как просила; ничего не меняла, кроме высоты камеры в прошлый раз) ===== */
+/* ===== Мобайл: стики (как согласовали) ===== */
 let moveActive=false, rotActive=false, moveVec={x:0,y:0}, rotVec={x:0,y:0};
 if (isTouch){
   const jmWrap = document.getElementById('joy-move');
@@ -213,11 +208,11 @@ if (isTouch){
       const sec = Math.min(0.05, dt/1000);
       const lc = camEl.components['look-controls']; if (!lc) return;
 
-      // ПРАВЫЙ: yaw/pitch — «вверх=вверх, вниз=вниз; влево=влево, вправо=вправо»
+      // ПРАВЫЙ: yaw/pitch без инверсии — лево=лево, право=право, вверх=вверх, вниз=вниз
       if (rotActive){
         const yawObj = lc.yawObject, pitchObj = lc.pitchObject;
-        yawObj.rotation.y -= rotVec.x * this.data.rotSpeed * sec;   // Лево/право ок
-        pitchObj.rotation.x += rotVec.y * this.data.rotSpeed * sec; // Вверх/вниз ок
+        yawObj.rotation.y -= rotVec.x * this.data.rotSpeed * sec;
+        pitchObj.rotation.x += rotVec.y * this.data.rotSpeed * sec;
         const lim = Math.PI/2 - 0.01;
         pitchObj.rotation.x = Math.max(-lim, Math.min(lim, pitchObj.rotation.x));
       }
@@ -229,7 +224,7 @@ if (isTouch){
         const right = new THREE.Vector3().crossVectors(fwd, new THREE.Vector3(0,1,0)).normalize();
         const speed = this.data.moveSpeed * sec;
         const forward = -moveVec.y;   // вверх (y<0) -> вперёд
-        const strafe  = -moveVec.x;   // инверсия X, чтобы «влево=влево, вправо=вправо»
+        const strafe  = -moveVec.x;   // инверсия X — «влево=влево, вправо=вправо»
         rig.object3D.position.x += (right.x * strafe + fwd.x * forward) * speed;
         rig.object3D.position.z += (right.z * strafe + fwd.z * forward) * speed;
       }
@@ -241,40 +236,49 @@ if (isTouch){
 /* ===== кто движется для логики ===== */
 const moverEl = isTouch ? rig : camEl;
 
-/* ===== НАДЁЖНЫЙ СТАРТ ВИДЕО (анти-«первый кадр») ===== */
+/* ===== ЗАГРУЗКА ВИДЕО ЧЕРЕЗ BLOB + objectURL (надёжно для Safari/Chrome) ===== */
+let popupVideoURL = null;
+(async function preloadVideoAsBlob(){
+  try{
+    const res = await fetch('assets/video/clip1.mp4', {cache:'force-cache'});
+    const blob = await res.blob();
+    popupVideoURL = URL.createObjectURL(blob);
+    // навешиваем источник ТОЛЬКО на overlay-видео (которое показываем)
+    popupVid.src = popupVideoURL;
+  }catch(e){
+    // если не получилось — оставим исходный путь в src
+    popupVideoURL = popupVid.getAttribute('src') || 'assets/video/clip1.mp4';
+  }
+})();
+
+/* ===== НАДЁЖНЫЙ СТАРТ ВИДЕО (без load(), без второго видеотега) ===== */
 async function robustPlay(video, {tries=6, step=0.001, wait=220} = {}){
   let ok = false;
   for (let i=0; i<tries; i++){
-    try {
-      // маленький сдвиг таймкода, чтобы Safari не залипал на кадре 0
-      video.currentTime = Math.max(0, (video.currentTime || 0) + step);
-    } catch(e){}
+    try { video.currentTime = Math.max(0, (video.currentTime || 0) + step); } catch(e){}
     try {
       await video.play();
-      // проверим, движется ли время
       const t0 = video.currentTime;
       await new Promise(r => setTimeout(r, wait));
       const t1 = video.currentTime;
       if (t1 > t0 + 0.0005){ ok = true; break; }
     } catch(e){}
-    // на всякий — включаем mute (iOS требует жест/или mute)
-    if (i === 0) video.muted = true;
+    if (i === 0) video.muted = true; // на всякий случай для iOS
   }
   return ok;
 }
 
-/* ===== ПОП-АП как HUD (HTML) ===== */
+/* ===== ПОП-АП как HUD (HTML). Управляем ТОЛЬКО #popupVid ===== */
 AFRAME.registerComponent('popup-video-hud',{
   schema:{
     radius:{type:'number', default:2.0},
-    video:{type:'selector'},
     loops:{type:'number', default:2},
     hysteresis:{type:'number', default:0.10}
   },
   init(){
     this.active=false; this.waitExit=false; this.looped=0;
-    this.video = (this.data.video || popupVid);
-    this.video.playsInline = true;
+    this.video = popupVid; // ← ключевая правка: только overlay-видео
+
     window.addEventListener('keydown', (e)=>{ if (e.key.toLowerCase()==='p') this.show(true); });
     const syncMute = ()=>{ this.video.muted = amb.muted; };
     syncMute(); muteBtn.addEventListener('click', syncMute);
@@ -303,7 +307,7 @@ AFRAME.registerComponent('popup-video-hud',{
     this._onEnded = onEnded;
     this.video.addEventListener('ended', onEnded);
 
-    // стартуем (без load()), с ретраями
+    // гарантированный старт (источник уже blob: URL)
     try { this.video.muted = amb.muted; } catch(e){}
     await robustPlay(this.video);
   },
@@ -409,7 +413,7 @@ AFRAME.registerComponent('crumb-trail',{
 });
 (isTouch ? rig : camEl).setAttribute('crumb-trail','step:0.004; radius:0.007; color:#00e0ff; fadeSeconds:15; max:30000; y:0.03');
 
-/* ===== DIAG: P — показать попап принудительно ===== */
+/* ===== DIAG: P — принудительно показать поп-ап ===== */
 window.addEventListener('keydown', e=>{
   if (e.key.toLowerCase()==='p'){
     const trig = document.querySelector('.trigger');
