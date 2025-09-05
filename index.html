@@ -80,7 +80,7 @@
   <!-- триггер(ы) поп-апа. Клонируй, меняя position -->
   <a-entity class="trigger"
             position="6.088 0.0 1.772"
-            follow-video-panel="radius:0.5; video:#clip1; width:0.9; height:0.9; forward:1.2; right:0.35; loops:3; hysteresis:0.10">
+            follow-video-panel="radius:2.0; video:#clip1; width:0.9; height:0.9; forward:1.2; right:0.35; loops:3; hysteresis:0.10">
   </a-entity>
 
   <!-- плоскость панели (её двигает компонент) -->
@@ -144,7 +144,7 @@ if (isTouch){
   camEl.setAttribute('look-controls', 'touchEnabled:false; mouseEnabled:false');
 }
 
-/* перемещение и поворот от стиков (мобайл) */
+/* перемещение и поворот от стиков (мобайл) — движение относительно ориентации RIG */
 AFRAME.registerComponent('dual-stick',{
   schema:{ speed:{type:'number', default:1.6}, rotSpeed:{type:'number', default:2.5} }, // rotSpeed рад/с при max отклонении
   tick: function(time, dt){
@@ -176,7 +176,7 @@ rig.setAttribute('dual-stick','speed:1.6; rotSpeed:2.8');
 /* ===================== ПОП-АП: всегда перед зрителем, поворот по Y ===================== */
 AFRAME.registerComponent('follow-video-panel',{
   schema:{
-    radius:{type:'number', default:0.5},
+    radius:{type:'number', default:2.0},
     video:{type:'selector'},
     width:{type:'number', default:0.9},
     height:{type:'number', default:0.9},
@@ -302,10 +302,10 @@ AFRAME.registerComponent('follow-video-panel',{
 AFRAME.registerComponent('crumb-trail',{
   schema:{
     step:{type:'number', default:0.6},
-    radius:{type:'number', default:0.035},        // было 0.05 → меньше
+    radius:{type:'number', default:0.035},        // меньше
     color:{type:'color',  default:'#00e0ff'},     // циан
-    fadeSeconds:{type:'number', default:75},      // было 25 → x3
-    max:{type:'number', default:750},             // было 250 → x3
+    fadeSeconds:{type:'number', default:75},      // x3
+    max:{type:'number', default:750},             // x3
     y:{type:'number', default:0.03}
   },
   init(){ this.last=null; this.pool=[]; this.active=[]; this.tmp=new THREE.Vector3(); },
