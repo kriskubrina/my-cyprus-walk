@@ -72,9 +72,13 @@
   <a-assets>
     <img id="skyTex" src="assets/images/sky.jpg" crossorigin="anonymous">
     <a-asset-item id="street" src="assets/models/Limasol_Street%20(2).glb"></a-asset-item>
-    <!-- ассет-видео оставляем, но управляем overlay-видео -->
+
+    <!-- ВИДЕО ассет (показываем overlay-видео) -->
     <video id="clip1" src="assets/video/clip1.mp4" preload="metadata"
            playsinline webkit-playsinline muted crossorigin="anonymous"></video>
+
+    <!-- НОВОЕ: гирос -->
+    <a-asset-item id="gyros" src="assets/models/gyros.gltf"></a-asset-item>
   </a-assets>
 
   <a-sky src="#skyTex" rotation="0 -90 0"></a-sky>
@@ -90,10 +94,16 @@
 
   <a-entity id="streetEntity" gltf-model="#street" position="0 0 0"></a-entity>
 
-  <!-- триггер попапа -->
+  <!-- триггер попапа-видео -->
   <a-entity class="trigger"
             position="6.088 0.0 1.772"
             popup-video-hud="radius:2.0; loops:2; hysteresis:0.10">
+  </a-entity>
+
+  <!-- НОВОЕ: триггер спавна гироса -->
+  <a-entity class="spawn-gyro-trigger"
+            position="14 1.6 5"
+            spawn-rot-fade="model:#gyros; radius:2; spinDegPerSec:60; lifeMs:15000; fadeMs:800; hysteresis:0.20">
   </a-entity>
 
 </a-scene>
@@ -133,10 +143,9 @@ setTimeout(hideBoot, 10000); // аварийно
 function updateMuteIcon(){ muteBtn.textContent = amb.muted ? '🔇' : '🔊'; }
 window.addEventListener('DOMContentLoaded', async ()=>{
   try {
-    amb.muted = false;          // пробуем сразу со звуком
-    await amb.play();           // десктоп — обычно ок
+    amb.muted = false;
+    await amb.play();
   } catch(e){
-    // если блокируют автоплей — стартуем в mute и снимаем mute на первом тапе/клике
     amb.muted = true;
     amb.play().catch(()=>{});
     ['click','touchstart'].forEach(ev=>{
@@ -151,7 +160,6 @@ window.addEventListener('DOMContentLoaded', async ()=>{
 });
 muteBtn.addEventListener('click', ()=>{
   amb.muted = !amb.muted;
-  // видео-попап синхронизируем по mute
   popupVid.muted = amb.muted;
   if (!amb.muted) amb.play().catch(()=>{});
   updateMuteIcon();
@@ -190,7 +198,7 @@ if (!isTouch){
   camEl.setAttribute('look-controls','touchEnabled:false; mouseEnabled:false');
 }
 
-/* ===== Мобайл: стики (как согласовали) ===== */
+/* ===== Мобайл: стики ===== */
 let moveActive=false, rotActive=false, moveVec={x:0,y:0}, rotVec={x:0,y:0};
 if (isTouch){
   const jmWrap = document.getElementById('joy-move');
@@ -213,7 +221,7 @@ if (isTouch){
       const sec = Math.min(0.05, dt/1000);
       const lc = camEl.components['look-controls']; if (!lc) return;
 
-      // ПРАВЫЙ: yaw/pitch без инверсии — лево=лево, право=право, вверх=вверх, вниз=вниз
+      // ПРАВЫЙ стик: yaw/pitch без инверсии
       if (rotActive){
         const yawObj = lc.yawObject, pitchObj = lc.pitchObject;
         yawObj.rotation.y -= rotVec.x * this.data.rotSpeed * sec;
@@ -222,7 +230,7 @@ if (isTouch){
         pitchObj.rotation.x = Math.max(-lim, Math.min(lim, pitchObj.rotation.x));
       }
 
-      // ЛЕВЫЙ: движение по земле относительно взгляда камеры
+      // ЛЕВЫЙ стик: движение по земле относительно взгляда
       if (moveActive){
         const fwd = new THREE.Vector3(); camEl.object3D.getWorldDirection(fwd);
         fwd.y = 0; fwd.normalize(); if (fwd.lengthSq()<1e-6) fwd.set(0,0,-1);
@@ -266,7 +274,7 @@ async function robustPlay(video, {tries=6, step=0.001, wait=220} = {}){
       const t1 = video.currentTime;
       if (t1 > t0 + 0.0005){ ok = true; break; }
     } catch(e){}
-    if (i === 0) video.muted = true; // на всякий случай для iOS
+    if (i === 0) video.muted = true;
   }
   return ok;
 }
@@ -281,7 +289,6 @@ AFRAME.registerComponent('popup-video-hud',{
   init(){
     this.active=false; this.waitExit=false; this.looped=0;
     this.video = popupVid;
-
     window.addEventListener('keydown', (e)=>{ if (e.key.toLowerCase()==='p') this.show(true); });
     const syncMute = ()=>{ this.video.muted = amb.muted; };
     syncMute(); muteBtn.addEventListener('click', syncMute);
@@ -320,7 +327,7 @@ AFRAME.registerComponent('popup-video-hud',{
   }
 });
 
-/* ===== РАДАР (рисунок) + «N» + ШЕВРОН ВВЕРХ. ВЕРТИКАЛЬ ИСПРАВЛЕНА ===== */
+/* ===== РАДАР (рисунок) + «N» + ЧИСТЫЙ ШЕВРОН. Вертикаль исправлена ===== */
 (function(){
   const radar = document.getElementById('radar');
   const c = document.getElementById('radarCanvas');
@@ -334,7 +341,6 @@ AFRAME.registerComponent('popup-video-hud',{
     const cam = camEl.object3D, mover = (isTouch ? rig : camEl).object3D;
     if (!cam || !mover) return;
 
-    // локальный базис "вперёд/вправо" от камеры (по земле)
     const fwd = new THREE.Vector3(); cam.getWorldDirection(fwd); fwd.y=0; fwd.normalize(); if(fwd.lengthSq()<1e-6) fwd.set(0,0,-1);
     const right = new THREE.Vector3().crossVectors(fwd,new THREE.Vector3(0,1,0)).normalize();
 
@@ -344,36 +350,33 @@ AFRAME.registerComponent('popup-video-hud',{
     ctx.clearRect(0,0,c.width,c.height);
     ctx.lineWidth=1; ring(R,0.25); ring(R*0.66,0.18); ring(R*0.33,0.14);
 
-    // маленькая риска сверху (маркер "вверх экрана")
-    ctx.strokeStyle='rgba(255,255,255,0.18)'; ctx.beginPath(); ctx.moveTo(cx, cy-R); ctx.lineTo(cx, cy-R+6); ctx.stroke();
-
-    // ШЕВРОН "вперёд": маленькая стрелка от центра вверх
-    const chevr = Math.max(10, R*0.18);
-    ctx.strokeStyle='rgba(255,255,255,0.85)'; ctx.lineWidth=2;
-    ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx, cy - chevr); ctx.stroke();
-    ctx.beginPath(); // маленький треугольничек-носик
-    ctx.moveTo(cx, cy - chevr);
-    ctx.lineTo(cx - 6, cy - chevr + 10);
-    ctx.lineTo(cx + 6, cy - chevr + 10);
-    ctx.closePath(); ctx.fillStyle='rgba(255,255,255,0.85)'; ctx.fill();
-
     // точка игрока
     ctx.fillStyle='#fff'; ctx.beginPath(); ctx.arc(cx,cy,Math.max(2, R*0.02), 0, Math.PI*2); ctx.fill();
 
-    // --- метка "N" (мировой север 0,0,-1) в координатах радара
+    // метка "N" (мировой север 0,0,-1) в координатах радара
     const worldNorth = new THREE.Vector3(0,0,-1);
-    const nx = worldNorth.dot(right);   // проекция на локальный right
-    const nz = worldNorth.dot(fwd);     // проекция на локальный forward
+    const nx = worldNorth.dot(right);
+    const nz = worldNorth.dot(fwd);
     const rN = R - 8;
     const xN = cx + nx * rN;
-    const yN = cy + nz * rN;  // <<< ИСПРАВЛЕНО: вертикаль (было cy - nz*rN)
-
+    const yN = cy + nz * rN; // ВПЕРЁД = ВВЕРХ
     ctx.fillStyle='rgba(255,255,255,0.95)';
     ctx.font = Math.max(12, Math.floor(R*0.12)) + 'px system-ui, -apple-system, Segoe UI, Roboto, Arial';
     ctx.textAlign='center'; ctx.textBaseline='middle';
     ctx.fillText('N', xN, yN);
 
-    // триггеры
+    // ЧИСТЫЙ ШЕВРОН (без ножки), направлен "вверх"
+    const chevrLen = Math.max(12, R*0.24);
+    const chevrYOffset = Math.max(10, R*0.10);
+    ctx.strokeStyle='rgba(255,255,255,0.9)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(cx - chevrLen*0.5, cy - chevrYOffset + chevrLen*0.5);
+    ctx.lineTo(cx,                  cy - chevrYOffset);
+    ctx.lineTo(cx + chevrLen*0.5, cy - chevrYOffset + chevrLen*0.5);
+    ctx.stroke();
+
+    // цели
     let nearest=null, nearestDist=Infinity, pts=[];
     triggers.forEach(t=>{
       const tp = t.object3D.getWorldPosition(new THREE.Vector3());
@@ -388,7 +391,6 @@ AFRAME.registerComponent('popup-video-hud',{
     ctx.fillStyle='#00ffa8';
     pts.forEach(p=>{
       if(p.d>RADAR_RANGE) return;
-      // <<< ИСПРАВЛЕНО: вертикаль — теперь вперед рисуется вверх
       ctx.beginPath(); ctx.arc(cx+p.lx*s, cy+p.lz*s, Math.max(3, R*0.03), 0, Math.PI*2); ctx.fill();
     });
     if (nearest && nearestDist<=RADAR_RANGE){
@@ -452,6 +454,113 @@ AFRAME.registerComponent('crumb-trail',{
   }
 });
 (isTouch ? rig : camEl).setAttribute('crumb-trail','step:0.004; radius:0.007; color:#00e0ff; fadeSeconds:15; max:30000; y:0.03');
+
+/* ===== НОВОЕ: компонент спавна/вращения/затухания модели ===== */
+AFRAME.registerComponent('spawn-rot-fade',{
+  schema:{
+    model:{type:'selector'},      // #gyros
+    radius:{type:'number', default:2.0},
+    hysteresis:{type:'number', default:0.20},
+    spinDegPerSec:{type:'number', default:60},
+    lifeMs:{type:'number', default:15000},
+    fadeMs:{type:'number', default:800}
+  },
+  init(){
+    this.armed = true;          // можно сработать
+    this.activeEl = null;       // текущий заспавненный
+    this.spawnTime = 0;
+    this.fading = false;
+    this.materials = [];
+  },
+  tick(time, dt){
+    // расстояние от игрока до точки
+    const mPos = (isTouch ? rig : camEl).object3D.getWorldPosition(new THREE.Vector3());
+    const tPos = this.el.object3D.getWorldPosition(new THREE.Vector3());
+    const distXZ = Math.hypot(mPos.x - tPos.x, mPos.z - tPos.z);
+
+    if (this.armed && distXZ <= this.data.radius){
+      this.spawnGyros(tPos);
+      this.armed = false;
+    } else if (!this.armed && distXZ > (this.data.radius + this.data.hysteresis)){
+      // «разоружение» снято — можно сработать снова в следующий вход
+      this.armed = true;
+    }
+
+    // кручение и тайм-аут жизни
+    if (this.activeEl){
+      const obj = this.activeEl.object3D;
+      const sec = Math.min(0.05, dt/1000);
+      obj.rotation.y += (this.data.spinDegPerSec * Math.PI/180) * sec;
+
+      if (!this.fading && (time - this.spawnTime) >= this.data.lifeMs){
+        this.startFadeOut();
+      }
+      if (this.fading){
+        this.stepFade(time);
+      }
+    }
+  },
+  spawnGyros(pos){
+    const e = document.createElement('a-entity');
+    e.setAttribute('gltf-model', `#${this.data.model.id}`);
+    e.setAttribute('position', `${pos.x} ${pos.y} ${pos.z}`);
+    // можно масштаб подправить, если нужно: e.setAttribute('scale','1 1 1');
+    this.el.sceneEl.appendChild(e);
+
+    this.activeEl = e;
+    this.spawnTime = performance.now();
+    this.fading = false;
+    this.materials = [];
+
+    // как только модель загрузится — соберём материалы для fade
+    e.addEventListener('model-loaded', ()=>{
+      e.object3D.traverse((node)=>{
+        if (node.isMesh && node.material){
+          const mats = Array.isArray(node.material) ? node.material : [node.material];
+          mats.forEach(m=>{
+            m.transparent = true;
+            m.opacity = 1.0;
+            this.materials.push(m);
+          });
+        }
+      });
+    });
+  },
+  startFadeOut(){
+    this.fading = true;
+    this.fadeStart = performance.now();
+  },
+  stepFade(now){
+    const t = (now - this.fadeStart) / this.data.fadeMs;
+    const k = Math.min(1, Math.max(0, t));
+    const alpha = 1 - k;
+    this.materials.forEach(m=>{ m.opacity = alpha; });
+    if (k >= 1){
+      this.destroyActive();
+    }
+  },
+  destroyActive(){
+    if (!this.activeEl) return;
+    // dispose ресурсов
+    this.activeEl.object3D.traverse((node)=>{
+      if (node.isMesh){
+        if (node.geometry){ node.geometry.dispose?.(); }
+        const mats = Array.isArray(node.material) ? node.material : [node.material];
+        mats.forEach(m=>{
+          // текстуры
+          ['map','normalMap','metalnessMap','roughnessMap','aoMap','emissiveMap','alphaMap'].forEach(k=>{
+            if (m[k] && m[k].dispose) m[k].dispose();
+          });
+          m.dispose?.();
+        });
+      }
+    });
+    this.activeEl.remove();
+    this.activeEl = null;
+    this.materials = [];
+    this.fading = false;
+  }
+});
 
 /* ===== DIAG: P — принудительно показать поп-ап ===== */
 window.addEventListener('keydown', e=>{
