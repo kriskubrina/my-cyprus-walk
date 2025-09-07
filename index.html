@@ -18,11 +18,10 @@
       z-index:40; cursor:pointer;
     }
 
-    /* Радар (размер задаём из JS) */
     #radar{ position:fixed; right:12px; top:12px; z-index:34; pointer-events:none; }
     #radar canvas{ width:100%; height:100%; display:block; }
 
-    /* Поп-ап HUD: квадрат, ширина = ширине радара, под радаром справа */
+    /* Попап-HUD: квадрат, ширина = ширине радара, под радаром справа */
     #popup {
       position:fixed; right:12px; background:#000;
       border:1px solid rgba(255,255,255,.25); border-radius:8px;
@@ -32,17 +31,14 @@
     }
     #popup video{ width:100%; height:100%; display:block; object-fit:cover; background:#000; }
 
-    /* Джойстики (только мобайл) */
     .joy{ position:fixed; bottom:18px; width:160px; height:160px; z-index:33; touch-action:none; opacity:.95; display:none; }
     #joy-move{ left:18px; }  #joy-rot{ right:18px; }
     .joy::before{ content:''; position:absolute; inset:0; border-radius:50%;
       background:radial-gradient(circle at 50% 50%, rgba(255,255,255,.15), rgba(0,0,0,.2));
       box-shadow:0 8px 28px rgba(0,0,0,.25); }
 
-    /* хвост */
     .dot{ mix-blend-mode: screen; }
 
-    /* отладка позы */
     #hud{
       position:fixed; left:10px; bottom:10px; background:rgba(0,0,0,.6); color:#fff;
       font:12px system-ui; padding:6px 8px; border-radius:8px; z-index:20; pointer-events:none;
@@ -76,7 +72,7 @@
   <a-assets>
     <img id="skyTex" src="assets/images/sky.jpg" crossorigin="anonymous">
     <a-asset-item id="street" src="assets/models/Limasol_Street%20(2).glb"></a-asset-item>
-    <!-- оставляем как ассет, но воспроизводить будем overlay-видео -->
+    <!-- ассет-видео оставляем, но управляем overlay-видео -->
     <video id="clip1" src="assets/video/clip1.mp4" preload="metadata"
            playsinline webkit-playsinline muted crossorigin="anonymous"></video>
   </a-assets>
@@ -102,7 +98,7 @@
 
 </a-scene>
 
-<!-- Поп-ап HUD (единственный видео-элемент, которым мы управляем) -->
+<!-- Попап-HUD -->
 <div id="popup">
   <video id="popupVid" playsinline webkit-playsinline muted preload="metadata"></video>
 </div>
@@ -118,39 +114,48 @@
 <div id="radar"><canvas id="radarCanvas"></canvas></div>
 
 <script>
-/* ===== звук ===== */
+/* ===== ссылки/лоадер ===== */
 const amb = document.getElementById('amb');
 const muteBtn = document.getElementById('mute');
 const popupVid = document.getElementById('popupVid');
-let audioStarted = false;
-function ensurePlayOnce(){
-  if (audioStarted) return;
-  audioStarted = true;
-  amb.muted = true; popupVid.muted = true;
-  amb.play().catch(()=>{});
-  // короткий старт/пауза, чтобы iOS «разбудить» видеодекодер
-  popupVid.play().then(()=>{ popupVid.pause(); }).catch(()=>{});
-}
-function updateMuteIcon(){ muteBtn.textContent = amb.muted ? '🔇' : '🔊'; }
-muteBtn.addEventListener('click', ()=>{
-  ensurePlayOnce();
-  amb.muted = !amb.muted;
-  popupVid.muted = amb.muted;
-  updateMuteIcon();
-});
-['click','touchstart'].forEach(ev=>window.addEventListener(ev, ensurePlayOnce));
-updateMuteIcon();
-
-/* ===== ссылки/лоадер ===== */
 const rig = document.getElementById('rig');
 const camEl = document.getElementById('player');
 const hud = document.getElementById('hud');
 const popupWrap = document.getElementById('popup');
 const boot = document.getElementById('boot');
 const streetEntity = document.getElementById('streetEntity');
+
 function hideBoot(){ boot.style.display = 'none'; }
 streetEntity.addEventListener('model-loaded', hideBoot);
-setTimeout(hideBoot, 10000); // аварийная защита
+setTimeout(hideBoot, 10000); // аварийно
+
+/* ===== Автозапуск фоновой музыки по умолчанию ===== */
+function updateMuteIcon(){ muteBtn.textContent = amb.muted ? '🔇' : '🔊'; }
+window.addEventListener('DOMContentLoaded', async ()=>{
+  try {
+    amb.muted = false;          // пробуем сразу со звуком
+    await amb.play();           // десктоп — обычно ок
+  } catch(e){
+    // если блокируют автоплей — стартуем в mute и снимаем mute на первом тапе/клике
+    amb.muted = true;
+    amb.play().catch(()=>{});
+    ['click','touchstart'].forEach(ev=>{
+      window.addEventListener(ev, ()=>{
+        amb.muted = false;
+        amb.play().catch(()=>{});
+        updateMuteIcon();
+      }, {once:true});
+    });
+  }
+  updateMuteIcon();
+});
+muteBtn.addEventListener('click', ()=>{
+  amb.muted = !amb.muted;
+  // видео-попап синхронизируем по mute
+  popupVid.muted = amb.muted;
+  if (!amb.muted) amb.play().catch(()=>{});
+  updateMuteIcon();
+});
 
 /* ===== отладка координат ===== */
 function fmt(n){return Number(n).toFixed(3)}
@@ -159,7 +164,7 @@ setInterval(()=>{
   hud.textContent = `x:${fmt(p.x)}  y:${fmt(p.y)}  z:${fmt(p.z)}`;
 }, 200);
 
-/* ===== размеры радара/попапа ===== */
+/* ===== мобайл/десктоп размеры ===== */
 const isTouch = AFRAME.utils.device.isMobile() ||
                 navigator.maxTouchPoints > 0 ||
                 window.matchMedia('(pointer: coarse)').matches;
@@ -236,22 +241,20 @@ if (isTouch){
 /* ===== кто движется для логики ===== */
 const moverEl = isTouch ? rig : camEl;
 
-/* ===== ЗАГРУЗКА ВИДЕО ЧЕРЕЗ BLOB + objectURL (надёжно для Safari/Chrome) ===== */
+/* ===== Загрузка видео как Blob + objectURL ===== */
 let popupVideoURL = null;
 (async function preloadVideoAsBlob(){
   try{
     const res = await fetch('assets/video/clip1.mp4', {cache:'force-cache'});
     const blob = await res.blob();
     popupVideoURL = URL.createObjectURL(blob);
-    // навешиваем источник ТОЛЬКО на overlay-видео (которое показываем)
     popupVid.src = popupVideoURL;
   }catch(e){
-    // если не получилось — оставим исходный путь в src
     popupVideoURL = popupVid.getAttribute('src') || 'assets/video/clip1.mp4';
   }
 })();
 
-/* ===== НАДЁЖНЫЙ СТАРТ ВИДЕО (без load(), без второго видеотега) ===== */
+/* ===== Надёжный старт видео (без load()) ===== */
 async function robustPlay(video, {tries=6, step=0.001, wait=220} = {}){
   let ok = false;
   for (let i=0; i<tries; i++){
@@ -268,7 +271,7 @@ async function robustPlay(video, {tries=6, step=0.001, wait=220} = {}){
   return ok;
 }
 
-/* ===== ПОП-АП как HUD (HTML). Управляем ТОЛЬКО #popupVid ===== */
+/* ===== Попап как HUD (HTML). Управляем только #popupVid ===== */
 AFRAME.registerComponent('popup-video-hud',{
   schema:{
     radius:{type:'number', default:2.0},
@@ -277,7 +280,7 @@ AFRAME.registerComponent('popup-video-hud',{
   },
   init(){
     this.active=false; this.waitExit=false; this.looped=0;
-    this.video = popupVid; // ← ключевая правка: только overlay-видео
+    this.video = popupVid;
 
     window.addEventListener('keydown', (e)=>{ if (e.key.toLowerCase()==='p') this.show(true); });
     const syncMute = ()=>{ this.video.muted = amb.muted; };
@@ -307,7 +310,6 @@ AFRAME.registerComponent('popup-video-hud',{
     this._onEnded = onEnded;
     this.video.addEventListener('ended', onEnded);
 
-    // гарантированный старт (источник уже blob: URL)
     try { this.video.muted = amb.muted; } catch(e){}
     await robustPlay(this.video);
   },
@@ -318,39 +320,68 @@ AFRAME.registerComponent('popup-video-hud',{
   }
 });
 
-/* ===== РАДАР (рисунок) ===== */
+/* ===== РАДАР (рисунок) + СЕВЕРНАЯ МЕТКА (вариант 2) ===== */
 (function(){
   const radar = document.getElementById('radar');
   const c = document.getElementById('radarCanvas');
   const ctx = c.getContext('2d');
   const cx = c.width/2, cy = c.height/2, R = Math.min(cx, cy) - 2;
   const RADAR_RANGE = 25;
+
+  // рисуем концентрические кольца
   function ring(r,a){ ctx.strokeStyle=`rgba(255,255,255,${a})`; ctx.beginPath(); ctx.arc(cx,cy,r,0,Math.PI*2); ctx.stroke(); }
+
   setInterval(()=>{
     const cam = camEl.object3D, mover = (isTouch ? rig : camEl).object3D;
     if (!cam || !mover) return;
+
+    // базис «вперёд/вправо» от камеры (по земле)
     const fwd = new THREE.Vector3(); cam.getWorldDirection(fwd); fwd.y=0; fwd.normalize(); if(fwd.lengthSq()<1e-6) fwd.set(0,0,-1);
     const right = new THREE.Vector3().crossVectors(fwd,new THREE.Vector3(0,1,0)).normalize();
+
     const mPos = mover.getWorldPosition(new THREE.Vector3());
     const triggers = Array.from(document.querySelectorAll('.trigger'));
 
     ctx.clearRect(0,0,c.width,c.height);
     ctx.lineWidth=1; ring(R,0.25); ring(R*0.66,0.18); ring(R*0.33,0.14);
+
+    // маленькая риск-черта сверху (вверх экрана)
     ctx.strokeStyle='rgba(255,255,255,0.18)'; ctx.beginPath(); ctx.moveTo(cx, cy-R); ctx.lineTo(cx, cy-R+6); ctx.stroke();
+
+    // точка игрока
     ctx.fillStyle='#fff'; ctx.beginPath(); ctx.arc(cx,cy,Math.max(2, R*0.02), 0, Math.PI*2); ctx.fill();
 
+    // --- СЕВЕР (мировой 0,0,-1) в координатах радара (forward-up)
+    const worldNorth = new THREE.Vector3(0,0,-1);
+    const nx = worldNorth.dot(right);   // проекция на локальный right
+    const nz = worldNorth.dot(fwd);     // проекция на локальный forward
+    const rN = R - 8;                   // радиус размещения метки на ободе
+    const xN = cx + nx * rN;
+    const yN = cy - nz * rN;
+
+    // рисуем метку «N»
+    ctx.fillStyle='rgba(255,255,255,0.95)';
+    ctx.font = Math.max(12, Math.floor(R*0.12)) + 'px system-ui, -apple-system, Segoe UI, Roboto, Arial';
+    ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText('N', xN, yN);
+
+    // триггеры
     let nearest=null, nearestDist=Infinity, pts=[];
     triggers.forEach(t=>{
       const tp = t.object3D.getWorldPosition(new THREE.Vector3());
       const dx=tp.x-mPos.x, dz=tp.z-mPos.z;
-      const lx = dx*right.x + dz*right.z, lz = dx*fwd.x + dz*fwd.z;
+      const lx = dx*right.x + dz*right.z;
+      const lz = dx*fwd.x   + dz*fwd.z;
       const d = Math.hypot(lx,lz); pts.push({lx,lz,d});
       if(d<nearestDist){nearestDist=d; nearest=pts[pts.length-1];}
     });
 
     const s=(R-6)/RADAR_RANGE;
     ctx.fillStyle='#00ffa8';
-    pts.forEach(p=>{ if(p.d>RADAR_RANGE) return; ctx.beginPath(); ctx.arc(cx+p.lx*s, cy-p.lz*s, Math.max(3, R*0.03), 0, Math.PI*2); ctx.fill(); });
+    pts.forEach(p=>{
+      if(p.d>RADAR_RANGE) return;
+      ctx.beginPath(); ctx.arc(cx+p.lx*s, cy-p.lz*s, Math.max(3, R*0.03), 0, Math.PI*2); ctx.fill();
+    });
     if (nearest && nearestDist<=RADAR_RANGE){
       ctx.strokeStyle='rgba(255,215,0,0.9)'; ctx.lineWidth=2;
       ctx.beginPath(); ctx.arc(cx+nearest.lx*s, cy-nearest.lz*s, Math.max(6, R*0.06), 0, Math.PI*2); ctx.stroke(); ctx.lineWidth=1;
@@ -358,7 +389,7 @@ AFRAME.registerComponent('popup-video-hud',{
   },80);
 })();
 
-/* ===== «хвост» ===== */
+/* ===== «Хвост» ===== */
 AFRAME.registerComponent('crumb-trail',{
   schema:{
     step:{type:'number', default:0.004},
