@@ -320,7 +320,7 @@ AFRAME.registerComponent('popup-video-hud',{
   }
 });
 
-/* ===== РАДАР (рисунок) + СЕВЕРНАЯ МЕТКА (вариант 2) ===== */
+/* ===== РАДАР (рисунок) + «N» + ШЕВРОН ВВЕРХ. ВЕРТИКАЛЬ ИСПРАВЛЕНА ===== */
 (function(){
   const radar = document.getElementById('radar');
   const c = document.getElementById('radarCanvas');
@@ -328,14 +328,13 @@ AFRAME.registerComponent('popup-video-hud',{
   const cx = c.width/2, cy = c.height/2, R = Math.min(cx, cy) - 2;
   const RADAR_RANGE = 25;
 
-  // рисуем концентрические кольца
   function ring(r,a){ ctx.strokeStyle=`rgba(255,255,255,${a})`; ctx.beginPath(); ctx.arc(cx,cy,r,0,Math.PI*2); ctx.stroke(); }
 
   setInterval(()=>{
     const cam = camEl.object3D, mover = (isTouch ? rig : camEl).object3D;
     if (!cam || !mover) return;
 
-    // базис «вперёд/вправо» от камеры (по земле)
+    // локальный базис "вперёд/вправо" от камеры (по земле)
     const fwd = new THREE.Vector3(); cam.getWorldDirection(fwd); fwd.y=0; fwd.normalize(); if(fwd.lengthSq()<1e-6) fwd.set(0,0,-1);
     const right = new THREE.Vector3().crossVectors(fwd,new THREE.Vector3(0,1,0)).normalize();
 
@@ -345,21 +344,30 @@ AFRAME.registerComponent('popup-video-hud',{
     ctx.clearRect(0,0,c.width,c.height);
     ctx.lineWidth=1; ring(R,0.25); ring(R*0.66,0.18); ring(R*0.33,0.14);
 
-    // маленькая риск-черта сверху (вверх экрана)
+    // маленькая риска сверху (маркер "вверх экрана")
     ctx.strokeStyle='rgba(255,255,255,0.18)'; ctx.beginPath(); ctx.moveTo(cx, cy-R); ctx.lineTo(cx, cy-R+6); ctx.stroke();
+
+    // ШЕВРОН "вперёд": маленькая стрелка от центра вверх
+    const chevr = Math.max(10, R*0.18);
+    ctx.strokeStyle='rgba(255,255,255,0.85)'; ctx.lineWidth=2;
+    ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx, cy - chevr); ctx.stroke();
+    ctx.beginPath(); // маленький треугольничек-носик
+    ctx.moveTo(cx, cy - chevr);
+    ctx.lineTo(cx - 6, cy - chevr + 10);
+    ctx.lineTo(cx + 6, cy - chevr + 10);
+    ctx.closePath(); ctx.fillStyle='rgba(255,255,255,0.85)'; ctx.fill();
 
     // точка игрока
     ctx.fillStyle='#fff'; ctx.beginPath(); ctx.arc(cx,cy,Math.max(2, R*0.02), 0, Math.PI*2); ctx.fill();
 
-    // --- СЕВЕР (мировой 0,0,-1) в координатах радара (forward-up)
+    // --- метка "N" (мировой север 0,0,-1) в координатах радара
     const worldNorth = new THREE.Vector3(0,0,-1);
     const nx = worldNorth.dot(right);   // проекция на локальный right
     const nz = worldNorth.dot(fwd);     // проекция на локальный forward
-    const rN = R - 8;                   // радиус размещения метки на ободе
+    const rN = R - 8;
     const xN = cx + nx * rN;
-    const yN = cy - nz * rN;
+    const yN = cy + nz * rN;  // <<< ИСПРАВЛЕНО: вертикаль (было cy - nz*rN)
 
-    // рисуем метку «N»
     ctx.fillStyle='rgba(255,255,255,0.95)';
     ctx.font = Math.max(12, Math.floor(R*0.12)) + 'px system-ui, -apple-system, Segoe UI, Roboto, Arial';
     ctx.textAlign='center'; ctx.textBaseline='middle';
@@ -380,11 +388,12 @@ AFRAME.registerComponent('popup-video-hud',{
     ctx.fillStyle='#00ffa8';
     pts.forEach(p=>{
       if(p.d>RADAR_RANGE) return;
-      ctx.beginPath(); ctx.arc(cx+p.lx*s, cy-p.lz*s, Math.max(3, R*0.03), 0, Math.PI*2); ctx.fill();
+      // <<< ИСПРАВЛЕНО: вертикаль — теперь вперед рисуется вверх
+      ctx.beginPath(); ctx.arc(cx+p.lx*s, cy+p.lz*s, Math.max(3, R*0.03), 0, Math.PI*2); ctx.fill();
     });
     if (nearest && nearestDist<=RADAR_RANGE){
       ctx.strokeStyle='rgba(255,215,0,0.9)'; ctx.lineWidth=2;
-      ctx.beginPath(); ctx.arc(cx+nearest.lx*s, cy-nearest.lz*s, Math.max(6, R*0.06), 0, Math.PI*2); ctx.stroke(); ctx.lineWidth=1;
+      ctx.beginPath(); ctx.arc(cx+nearest.lx*s, cy+nearest.lz*s, Math.max(6, R*0.06), 0, Math.PI*2); ctx.stroke(); ctx.lineWidth=1;
     }
   },80);
 })();
