@@ -98,7 +98,7 @@
 
   <!-- триггер спавна гироса (обновлённые координаты) -->
   <a-entity class="spawn-gyro-trigger"
-            position="14 1.6 -5"
+            position="14 1 -6"
             spawn-rot-fade="model:#gyros; radius:2; spinDegPerSec:60; lifeMs:15000; fadeMs:800; hysteresis:0.20">
   </a-entity>
 
@@ -295,7 +295,7 @@ AFRAME.registerComponent('popup-video-hud',{
   hide(){ this.video.pause(); popupWrap.style.display = 'none'; this.active = false; }
 });
 
-/* ===== РАДАР: «N», чистый шеврон; розовые поп-апы, жёлтые спавны ===== */
+/* ===== РАДАР: фикс X (лево=лево), «N», шеврон; розовые поп-апы / жёлтые спавны ===== */
 (function(){
   const c = document.getElementById('radarCanvas');
   const ctx = c.getContext('2d');
@@ -321,10 +321,10 @@ AFRAME.registerComponent('popup-video-hud',{
     // точка игрока
     ctx.fillStyle='#fff'; ctx.beginPath(); ctx.arc(cx,cy,Math.max(2, R*0.02), 0, Math.PI*2); ctx.fill();
 
-    // «N» (мировой север 0,0,-1)
+    // «N» (мировой север 0,0,-1) — фикс X
     const worldNorth = new THREE.Vector3(0,0,-1);
     const nx = worldNorth.dot(right), nz = worldNorth.dot(fwd);
-    const rN = R - 8, xN = cx + nx * rN, yN = cy + nz * rN;
+    const rN = R - 8, xN = cx - nx * rN, yN = cy + nz * rN;
     ctx.fillStyle='rgba(255,255,255,0.95)';
     ctx.font = Math.max(12, Math.floor(R*0.12)) + 'px system-ui, -apple-system, Segoe UI, Roboto, Arial';
     ctx.textAlign='center'; ctx.textBaseline='middle';
@@ -351,12 +351,13 @@ AFRAME.registerComponent('popup-video-hud',{
         const lz = dx*fwd.x   + dz*fwd.z;
         const d = Math.hypot(lx,lz);
         if(d>RADAR_RANGE) return;
-        ctx.beginPath(); ctx.arc(cx+lx*s, cy+lz*s, Math.max(3, R*0.03), 0, Math.PI*2); ctx.fill();
+        // ФИКС X: слева в мире = слева на радаре
+        ctx.beginPath(); ctx.arc(cx - lx*s, cy + lz*s, Math.max(3, R*0.03), 0, Math.PI*2); ctx.fill();
         if (collectNearest && d < nearestDist){ nearestDist=d; nearest={lx,lz}; }
       });
       if (collectNearest && nearest){
         ctx.strokeStyle='rgba(255,215,0,0.9)'; ctx.lineWidth=2;
-        ctx.beginPath(); ctx.arc(cx+nearest.lx*s, cy+nearest.lz*s, Math.max(6, R*0.06), 0, Math.PI*2); ctx.stroke(); ctx.lineWidth=1;
+        ctx.beginPath(); ctx.arc(cx - nearest.lx*s, cy + nearest.lz*s, Math.max(6, R*0.06), 0, Math.PI*2); ctx.stroke(); ctx.lineWidth=1;
       }
     }
 
@@ -399,7 +400,7 @@ AFRAME.registerComponent('crumb-trail',{
 });
 (isTouch ? rig : camEl).setAttribute('crumb-trail','step:0.004; radius:0.007; color:#00e0ff; fadeSeconds:15; max:30000; y:0.03');
 
-/* ===== СПАВН/РОТАЦИЯ/ФЕЙД — фикс часов сцены и анти-дубль ===== */
+/* ===== СПАВН/РОТАЦИЯ/ФЕЙД (анти-дубль, часы сцены) ===== */
 AFRAME.registerComponent('spawn-rot-fade',{
   schema:{
     model:{type:'selector'},
@@ -410,23 +411,22 @@ AFRAME.registerComponent('spawn-rot-fade',{
     fadeMs:{type:'number', default:800}
   },
   init(){
-    this.armed = true;          // можно сработать
-    this.activeEl = null;       // текущий экземпляр
+    this.armed = true;
+    this.activeEl = null;
     this.spawnTime = 0;
     this.fading = false;
     this.materials = [];
   },
   tick(time, dt){
-    const now = this.el.sceneEl.time; // <-- единые «часы сцены»
+    const now = this.el.sceneEl.time;
     const mPos = (isTouch ? rig : camEl).object3D.getWorldPosition(new THREE.Vector3());
     const tPos = this.el.object3D.getWorldPosition(new THREE.Vector3());
     const distXZ = Math.hypot(mPos.x - tPos.x, mPos.z - tPos.z);
 
     if (this.armed && distXZ <= this.data.radius && !this.activeEl){
       this.spawnGyros(tPos, now);
-      this.armed = false; // запрещаем повтор, пока не выйдем из радиуса
+      this.armed = false;
     } else if (!this.armed && distXZ > (this.data.radius + this.data.hysteresis) && !this.activeEl){
-      // можно снова сработать при следующем входе
       this.armed = true;
     }
 
@@ -494,8 +494,6 @@ AFRAME.registerComponent('spawn-rot-fade',{
     this.activeEl = null;
     this.materials = [];
     this.fading = false;
-    // ВАЖНО: не «перевооружаемся», пока игрок остаётся внутри радиуса.
-    // armed станет true только после выхода из радиуса (см. tick()).
   }
 });
 
