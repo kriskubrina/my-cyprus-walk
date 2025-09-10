@@ -15,7 +15,7 @@
     #mute{
       position:fixed; left:12px; top:12px; padding:10px; border:0; border-radius:10px;
       background:#111; color:#fff; font:20px/1 system-ui; box-shadow:0 4px 16px rgba(0,0,0,.2);
-      z-index:40; cursor:pointer; display:none; /* показываем после клика по кассете */
+      z-index:40; cursor:pointer; display:none;
     }
 
     #radar{ position:fixed; right:12px; top:12px; z-index:34; pointer-events:none; }
@@ -43,11 +43,12 @@
       font:12px system-ui; padding:6px 8px; border-radius:8px; z-index:20; pointer-events:none;
     }
 
+    /* центральный лоадер — настоящая центровка */
     #boot{
-      position:fixed; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center;
+      position:fixed; inset:0; display:flex; align-items:center; justify-content:center;
       background:#000; color:#fff; z-index:100;
       font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
-      text-align:center;
+      text-align:center; flex-direction:column;
     }
     .dots{ display:flex; gap:10px; margin-bottom:16px; }
     .dot3{ width:10px; height:10px; border-radius:50%; background:#fff; opacity:.85; animation: b 1.2s infinite ease-in-out; }
@@ -56,11 +57,12 @@
     .gr{ font-size:18px; letter-spacing:.3px; margin-bottom:6px; }
     .en{ font-size:12px; opacity:.85; letter-spacing:.2px; }
 
+    /* хинт кассеты — тоже через флекс по центру */
     #cassette-hint{
-      position:fixed; left:50%; top:50%; transform:translate(-50%,-50%);
+      position:fixed; inset:0; display:flex; align-items:center; justify-content:center;
       z-index:50; color:#fff; text-align:center; pointer-events:none;
       font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
-      opacity:0.95;
+      opacity:0.95; flex-direction:column;
       animation: hintPulse 1.8s ease-in-out infinite;
     }
     #cassette-hint .dots{ gap:8px; margin:10px auto 0; }
@@ -84,16 +86,10 @@
 </div>
 
 <a-scene renderer="colorManagement:true" loading-screen="enabled:false" device-orientation-permission-ui="enabled:true">
-
   <a-assets>
     <img id="skyTex" src="assets/images/sky.jpg" crossorigin="anonymous">
-    <!-- большая сцена -->
     <a-asset-item id="world" src="assets/models/limassol-walk.glb"></a-asset-item>
-
-    <!-- Видео-контейнер для HUD -->
     <video id="clipPool" preload="metadata" playsinline webkit-playsinline crossorigin="anonymous"></video>
-
-    <!-- отдельная модель для спавна (если понадобится вне GLB) -->
     <a-asset-item id="gyros" src="assets/models/gyros.gltf"></a-asset-item>
   </a-assets>
 
@@ -113,14 +109,11 @@
   <a-entity id="streetEntity" gltf-model="#world" position="0 0 0"></a-entity>
 </a-scene>
 
-<!-- HUD поп-ап -->
 <div id="popup">
   <video id="popupVid" playsinline webkit-playsinline preload="metadata"></video>
 </div>
 
-<!-- Фон-музыка (запускается только по клику по кассете) -->
 <audio id="amb" src="assets/audio/Analog_Mannequin%20Milk%20Cassette%20X.mp3%20-%20Demo.mp3" preload="auto" loop></audio>
-<!-- Позиционный звук «dog» -->
 <audio id="dogAudio" src="assets/audio/dog.mp3" preload="auto"></audio>
 
 <button id="mute" aria-label="Toggle sound">🔇</button>
@@ -130,7 +123,7 @@
 <div id="radar"><canvas id="radarCanvas"></canvas></div>
 
 <script>
-/* ===== ссылки/лоадер ===== */
+/* ===== refs ===== */
 const amb = document.getElementById('amb');
 const muteBtn = document.getElementById('mute');
 const popupVid = document.getElementById('popupVid');
@@ -142,11 +135,23 @@ const boot = document.getElementById('boot');
 const streetEntity = document.getElementById('streetEntity');
 const cassetteHint = document.getElementById('cassette-hint');
 
+/* ===== надёжное ожидание модели ===== */
+function whenModelReady(cb){
+  const s = streetEntity;
+  const run = () => {
+    const root = streetEntity.getObject3D('mesh');
+    if (root) cb(root);
+  };
+  if (s.hasLoaded && streetEntity.getObject3D('mesh')) run();
+  else s.addEventListener('model-loaded', run, {once:true});
+}
+
+/* ===== скрыть лоадер (страховка таймером) ===== */
 function hideBoot(){ boot.style.display = 'none'; }
-streetEntity.addEventListener('model-loaded', hideBoot);
+streetEntity.addEventListener('model-loaded', hideBoot, {once:true});
 setTimeout(hideBoot, 10000);
 
-/* ===== mute управляет ТОЛЬКО фоном ===== */
+/* ===== mute — только фон ===== */
 function updateMuteIcon(){ muteBtn.textContent = amb.muted ? '🔇' : '🔊'; }
 muteBtn.addEventListener('click', ()=>{
   amb.muted = !amb.muted;
@@ -161,7 +166,7 @@ setInterval(()=>{
   hud.textContent = `x:${fmt(p.x)}  y:${fmt(p.y)}  z:${fmt(p.z)}`;
 }, 200);
 
-/* ===== размеры UI ===== */
+/* ===== UI размеры ===== */
 const isTouch = AFRAME.utils.device.isMobile() ||
                 navigator.maxTouchPoints > 0 ||
                 window.matchMedia('(pointer: coarse)').matches;
@@ -181,7 +186,7 @@ const RADAR_MARGIN = 12;
   popupWrap.style.left = 'auto';
 })();
 
-/* ===== Desktop: WASD / Mobile: стики ===== */
+/* ===== управление: WASD / стики ===== */
 if (!isTouch){
   camEl.setAttribute('wasd-controls','acceleration: 40');
 } else {
@@ -228,7 +233,6 @@ if (isTouch){
   camEl.setAttribute('mobile-camera-control','moveSpeed:1.9; rotSpeed:1.9');
 }
 
-/* ===== кто движется ===== */
 const moverEl = isTouch ? rig : camEl;
 
 /* ===== helpers ===== */
@@ -242,7 +246,6 @@ function findNodeByName(root, name){
   });
   return found;
 }
-
 async function robustPlay(video, {tries=6, step=0.001, wait=220} = {}){
   let ok = false;
   for (let i=0; i<tries; i++){
@@ -258,50 +261,38 @@ async function robustPlay(video, {tries=6, step=0.001, wait=220} = {}){
   return ok;
 }
 
-/* ===== Попап HUD (видео) — side + src, звук не зависит от mute, loops:1 ===== */
+/* ===== HUD-видео ===== */
 AFRAME.registerComponent('popup-video-hud',{
   schema:{
     radius:{default:2.0},
     loops:{default:1},
     hysteresis:{default:0.10},
-    side:{default:'right'},              // 'left' | 'right'
+    side:{default:'right'},
     src:{default:'assets/video/clip1.mp4'}
   },
-  init(){
-    this.active=false; this.waitExit=false; this.looped=0;
-    this.video = popupVid;
-  },
+  init(){ this.active=false; this.waitExit=false; this.looped=0; this.video = popupVid; },
   tick(){
     const mPos = moverEl.object3D.getWorldPosition(new THREE.Vector3());
     const tPos = this.el.object3D.getWorldPosition(new THREE.Vector3());
     const distXZ = Math.hypot(mPos.x - tPos.x, mPos.z - tPos.z);
     if (this.waitExit && distXZ > (this.data.radius + this.data.hysteresis)) this.waitExit = false;
-    if (!this.active && !this.waitExit && distXZ <= this.data.radius) this.show(false);
+    if (!this.active && !this.waitExit && distXZ <= this.data.radius) this.show();
   },
   async show(){
     this.active = true; this.looped = 0;
-
-    if (this.data.side === 'left'){
-      popupWrap.style.left = '12px';
-      popupWrap.style.right = 'auto';
-    } else {
-      popupWrap.style.right = '12px';
-      popupWrap.style.left = 'auto';
-    }
-    popupWrap.style.display = 'block';
+    if (this.data.side === 'left'){ popupWrap.style.left='12px'; popupWrap.style.right='auto'; }
+    else { popupWrap.style.right='12px'; popupWrap.style.left='auto'; }
+    popupWrap.style.display='block';
 
     if (this.video.getAttribute('src') !== this.data.src){
       try{ this.video.pause(); }catch(e){}
-      this.video.removeAttribute('src');
-      this.video.src = this.data.src;
-      try{ this.video.load(); }catch(e){}
+      this.video.removeAttribute('src'); this.video.src = this.data.src; try{ this.video.load(); }catch(e){}
     }
-    this.video.loop = false;
-    this.video.muted = false; // всегда со звуком
+    this.video.loop = false; this.video.muted=false;
 
     const onEnded = async ()=>{
       this.looped++;
-      if (this.looped < this.data.loops) { try { this.video.currentTime = 0.001; } catch(e){} await robustPlay(this.video); }
+      if (this.looped < this.data.loops) { try{ this.video.currentTime = 0.001; }catch(e){} await robustPlay(this.video); }
       else { this.hide(); this.waitExit = true; }
     };
     this._onEnded && this.video.removeEventListener('ended', this._onEnded);
@@ -309,10 +300,10 @@ AFRAME.registerComponent('popup-video-hud',{
 
     await robustPlay(this.video);
   },
-  hide(){ this.video.pause(); popupWrap.style.display = 'none'; this.active = false; }
+  hide(){ this.video.pause(); popupWrap.style.display='none'; this.active=false; }
 });
 
-/* ===== «Хвост» ===== */
+/* ===== хвост ===== */
 AFRAME.registerComponent('crumb-trail',{
   schema:{ step:{default:0.004}, radius:{default:0.007}, color:{default:'#00e0ff'}, fadeSeconds:{default:15}, max:{default: isTouch ? 15000 : 30000}, y:{default:0.03} },
   init(){ this.last=null; this.pool=[]; this.active=[]; this.tmp=new THREE.Vector3(); this.forceReset=false;
@@ -344,296 +335,188 @@ AFRAME.registerComponent('crumb-trail',{
 });
 (isTouch ? rig : camEl).setAttribute('crumb-trail','step:0.004; radius:0.007; color:#00e0ff; fadeSeconds:15; max:30000; y:0.03');
 
-/* ===== СПАВН/РОТАЦИЯ/FADE по существующему узлу (scale 0↔1), с таймером ===== */
+/* ===== показ/скрытие существующего узла по имени (gyros) ===== */
 AFRAME.registerComponent('reveal-node-rot-fade',{
   schema:{
-    targetName:{default:''},    // имя узла, который показываем/крутим
-    radius:{type:'number', default:2.0},
-    hysteresis:{type:'number', default:0.20},
-    spinDegPerSec:{type:'number', default:60},
-    lifeMs:{type:'number', default:15000},
-    fadeMs:{type:'number', default:800}
+    targetName:{default:''}, radius:{default:2.0}, hysteresis:{default:0.20},
+    spinDegPerSec:{default:60}, lifeMs:{default:15000}, fadeMs:{default:800}
   },
-  init(){
-    this.armed = true; this.active=false;
-    this.targetNode = null;
-    this.spawnTime = 0; this.fading = false; this.fadeStart = 0;
-
-    const onready = ()=>{
-      const root = streetEntity.getObject3D('mesh');
-      if (!root) return;
+  init(){ this.armed=true; this.active=false; this.targetNode=null; this.spawnTime=0; this.fading=false; this.fadeStart=0;
+    whenModelReady(root=>{
       this.targetNode = findNodeByName(root, this.data.targetName);
-      if (this.targetNode){
-        this.targetNode.visible = false;
-        this.targetNode.scale.setScalar(0);
-      }
-    };
-    if (!streetEntity.hasLoaded) streetEntity.addEventListener('model-loaded', onready);
-    else onready();
+      if (this.targetNode){ this.targetNode.visible=false; this.targetNode.scale.setScalar(0); }
+    });
   },
   tick(time, dt){
     if (!this.targetNode) return;
     const now = this.el.sceneEl.time;
-    const mPos = (isTouch ? rig : camEl).object3D.getWorldPosition(new THREE.Vector3());
-    const tPos = this.el.object3D.getWorldPosition(new THREE.Vector3()); // позиция ТРИГГЕРА (например, taverna)
+    const mPos = moverEl.object3D.getWorldPosition(new THREE.Vector3());
+    const tPos = this.el.object3D.getWorldPosition(new THREE.Vector3());
     const distXZ = Math.hypot(mPos.x - tPos.x, mPos.z - tPos.z);
 
     if (this.armed && distXZ <= this.data.radius && !this.active){
-      this.reveal(now);
-      this.armed = false;
+      this.active=true; this.fading=false; this.fadeStart=0; this.spawnTime=now;
+      this.targetNode.visible=true; this.targetNode.scale.setScalar(1);
     } else if (!this.armed && distXZ > (this.data.radius + this.data.hysteresis) && !this.active){
-      this.armed = true;
+      this.armed=true;
     }
-
     if (this.active){
-      const obj = this.targetNode;
       const sec = Math.min(0.05, dt/1000);
-      obj.rotation.y += (this.data.spinDegPerSec * Math.PI/180) * sec;
-      if (!this.fading && (now - this.spawnTime) >= this.data.lifeMs){
-        this.startFadeOut(now);
+      this.targetNode.rotation.y += (this.data.spinDegPerSec * Math.PI/180) * sec;
+      if (!this.fading && (now - this.spawnTime) >= this.data.lifeMs){ this.fading=true; this.fadeStart=now; }
+      if (this.fading){
+        const t = (now - this.fadeStart)/this.data.fadeMs;
+        const k = Math.min(1, Math.max(0,t)); const ease = k*k*(3-2*k); const s = 1-ease;
+        this.targetNode.scale.setScalar(Math.max(0,s));
+        if (k>=1){ this.targetNode.visible=false; this.active=false; this.fading=false; }
       }
-      if (this.fading) this.stepFade(now);
-    }
-  },
-  reveal(now){
-    this.active = true; this.fading = false; this.fadeStart = 0;
-    this.spawnTime = now;
-    this.targetNode.visible = true;
-    this.targetNode.scale.setScalar(1);
-  },
-  startFadeOut(now){ this.fading = true; this.fadeStart = now; },
-  stepFade(now){
-    const t = (now - this.fadeStart) / this.data.fadeMs;
-    const k = Math.min(1, Math.max(0, t));
-    const ease = k*k*(3 - 2*k);
-    const s = 1 - ease;
-    this.targetNode.scale.setScalar(Math.max(0, s));
-    if (k >= 1){
-      this.targetNode.visible = false;
-      this.active = false; this.fading = false;
     }
   }
 });
 
-/* ===== Позиционный звук + reveal узла DOG по имени ===== */
+/* ===== attention: звук + dog ===== */
 AFRAME.registerComponent('attention-dog',{
   schema:{ radius:{default:1.0}, hysteresis:{default:0.20}, lifeMs:{default:6000}, fadeMs:{default:600} },
-  init(){
-    this.armed = true; this.playing=false;
-    this.dogNode=null; this.soundEl=null; this.spawnTime=0; this.fading=false; this.fadeStart=0;
-
-    const onready = ()=>{
-      const root = streetEntity.getObject3D('mesh'); if(!root) return;
+  init(){ this.armed=true; this.playing=false; this.dogNode=null; this.soundEl=null; this.spawnTime=0; this.fading=false; this.fadeStart=0;
+    whenModelReady(root=>{
       this.dogNode = findNodeByName(root,'dog');
-      if (this.dogNode){ this.dogNode.visible=false; this.dogNode.scale.setScalar(0); }
-
-      // создаём позиционный звук у собаки
-      if (this.dogNode){
+      if (this.dogNode){ this.dogNode.visible=false; this.dogNode.scale.setScalar(0);
         const wp = new THREE.Vector3(); this.dogNode.getWorldPosition(wp);
         const s = document.createElement('a-entity');
         s.setAttribute('position', `${wp.x} ${wp.y} ${wp.z}`);
         s.setAttribute('sound', `src:#dogAudio; positional:true; refDistance:1; maxDistance:10; rolloffFactor:1`);
-        this.soundEl = s;
-        streetEntity.sceneEl.appendChild(s);
+        this.soundEl = s; streetEntity.sceneEl.appendChild(s);
       }
-    };
-    if (!streetEntity.hasLoaded) streetEntity.addEventListener('model-loaded', onready);
-    else onready();
+    });
   },
   tick(){
     if (!this.dogNode) return;
-    const mPos = (isTouch ? rig : camEl).object3D.getWorldPosition(new THREE.Vector3());
+    const mPos = moverEl.object3D.getWorldPosition(new THREE.Vector3());
     const tPos = this.el.object3D.getWorldPosition(new THREE.Vector3());
     const distXZ = Math.hypot(mPos.x - tPos.x, mPos.z - tPos.z);
 
-    if (this.armed && distXZ <= this.data.radius && !this.playing){
-      this.trigger();
-      this.armed = false;
-    } else if (!this.armed && distXZ > (this.data.radius + this.data.hysteresis) && !this.playing){
-      this.armed = true;
-    }
+    if (this.armed && distXZ <= this.data.radius && !this.playing){ this.trigger(); this.armed=false; }
+    else if (!this.armed && distXZ > (this.data.radius + this.data.hysteresis) && !this.playing){ this.armed=true; }
 
     if (this.playing){
       const now = this.el.sceneEl.time;
-      if (!this.fading && (now - this.spawnTime) >= this.data.lifeMs){
-        this.startFade(now);
-      }
+      if (!this.fading && (now - this.spawnTime) >= this.data.lifeMs){ this.fading=true; this.fadeStart=now; }
       if (this.fading){
-        const t = (now - this.fadeStart) / this.data.fadeMs;
-        const k = Math.min(1, Math.max(0, t));
-        const ease = k*k*(3 - 2*k);
-        const s = 1 - ease;
-        this.dogNode.scale.setScalar(Math.max(0, s));
+        const t=(now - this.fadeStart)/this.data.fadeMs; const k=Math.min(1,Math.max(0,t)); const s=1-(k*k*(3-2*k));
+        this.dogNode.scale.setScalar(Math.max(0,s));
         if (k>=1){ this.dogNode.visible=false; this.playing=false; this.fading=false; }
       }
     }
   },
   trigger(){
-    this.playing = true; this.spawnTime = this.el.sceneEl.time; this.fading=false;
-    this.dogNode.visible = true; this.dogNode.scale.setScalar(1);
-    // звук — независимо от mute (он только для фона)
+    this.playing=true; this.spawnTime=this.el.sceneEl.time; this.fading=false;
+    this.dogNode.visible=true; this.dogNode.scale.setScalar(1);
     try{ this.soundEl?.components.sound.stopSound(); }catch(e){}
     try{ this.soundEl?.components.sound.playSound(); }catch(e){}
-  },
-  startFade(now){ this.fading=true; this.fadeStart=now; }
+  }
 });
 
-/* ===== Видео на ПЛЕЙНЕ узла: один прогон, потом скрыть ===== */
+/* ===== видео-текстура на плейне (sunset2/3/waves) разово ===== */
 AFRAME.registerComponent('plane-video-once',{
-  schema:{
-    nodeName:{default:''},
-    videoSrc:{default:''},
-    radius:{default:0.7},
-    hysteresis:{default:0.10}
-  },
-  init(){
-    this.node=null; this.ready=false; this.playing=false; this.waitExit=false;
-    this.video=null; this.tex=null; this.materials=[];
-    const onready = ()=>{
-      const root = streetEntity.getObject3D('mesh'); if(!root) return;
+  schema:{ nodeName:{default:''}, videoSrc:{default:''}, radius:{default:0.7}, hysteresis:{default:0.10} },
+  init(){ this.node=null; this.ready=false; this.playing=false; this.waitExit=false; this.video=null; this.tex=null; this.materials=[];
+    whenModelReady(root=>{
       this.node = findNodeByName(root, this.data.nodeName); if(!this.node) return;
-
-      // собрать материалы внутри ноды
       const mats=[]; this.node.traverse(n=>{ if(n.isMesh){ const arr = Array.isArray(n.material)? n.material : [n.material]; arr.forEach(m=>m && mats.push(m)); }});
-      this.materials = mats;
-
-      // стартовое скрытие
-      this.node.visible = false; this.node.scale.setScalar(0);
-      this.ready = true;
-    };
-    if (!streetEntity.hasLoaded) streetEntity.addEventListener('model-loaded', onready);
-    else onready();
+      this.materials = mats; this.node.visible=false; this.node.scale.setScalar(0); this.ready=true;
+    });
   },
   tick(){
     if (!this.ready || !this.node) return;
-    const mPos = (isTouch ? rig : camEl).object3D.getWorldPosition(new THREE.Vector3());
+    const mPos = moverEl.object3D.getWorldPosition(new THREE.Vector3());
     const tPos = this.node.getWorldPosition(new THREE.Vector3());
     const distXZ = Math.hypot(mPos.x - tPos.x, mPos.z - tPos.z);
-
-    if (!this.playing && !this.waitExit && distXZ <= this.data.radius){
-      this.startVideo();
-    } else if (this.waitExit && distXZ > (this.data.radius + this.data.hysteresis)){
-      this.waitExit = false; // можно снова активировать при новом подходе (если нужно — оставим «одноразово» позже)
-    }
+    if (!this.playing && !this.waitExit && distXZ <= this.data.radius){ this.startVideo(); }
+    else if (this.waitExit && distXZ > (this.data.radius + this.data.hysteresis)){ this.waitExit=false; }
   },
   async startVideo(){
     this.playing = true;
-    // создаём элемент video (со звуком)
     this.video = document.createElement('video');
-    this.video.src = this.data.videoSrc;
-    this.video.playsInline = true; this.video.setAttribute('playsinline','');
-    this.video.preload = 'metadata'; this.video.crossOrigin = 'anonymous';
-    this.video.loop = false; this.video.muted = false;
+    this.video.src = this.data.videoSrc; this.video.playsInline = true; this.video.preload='metadata'; this.video.crossOrigin='anonymous';
+    this.video.loop=false; this.video.muted=false;
+    this.tex = new THREE.VideoTexture(this.video); this.tex.encoding=THREE.sRGBEncoding;
+    this.tex.minFilter=THREE.LinearFilter; this.tex.magFilter=THREE.LinearFilter;
 
-    // текстура
-    this.tex = new THREE.VideoTexture(this.video);
-    this.tex.encoding = THREE.sRGBEncoding;
-    this.tex.minFilter = THREE.LinearFilter; this.tex.magFilter = THREE.LinearFilter;
+    const basic = new THREE.MeshBasicMaterial({ map:this.tex, side:THREE.DoubleSide });
+    const meshes=[]; this.node.traverse(n=>{ if(n.isMesh) meshes.push(n); });
+    meshes.forEach(n=>{ n.material = basic; });
 
-    // применяем простые материалы (unlit)
-    this.materials.forEach((m,i)=>{
-      const basic = new THREE.MeshBasicMaterial({ map:this.tex, side:THREE.DoubleSide });
-      // сохраним старый, чтобы вернуть при необходимости
-      if (!m.userData.__orig) m.userData.__orig = m;
-      const meshList=[]; this.node.traverse(n=>{ if(n.isMesh){ meshList.push(n); }});
-      meshList.forEach(n=>{ n.material = basic; });
-    });
-
-    this.node.visible = true; this.node.scale.setScalar(1);
-
+    this.node.visible=true; this.node.scale.setScalar(1);
     this.video.addEventListener('ended', ()=>{
-      // скрываем и чистим
-      this.node.visible = false; this.node.scale.setScalar(0);
+      this.node.visible=false; this.node.scale.setScalar(0);
       try{ this.video.pause(); }catch(e){}
-      if (this.tex) { this.tex.dispose(); this.tex=null; }
-      this.playing = false; this.waitExit = true;
+      if (this.tex){ this.tex.dispose(); this.tex=null; }
+      this.playing=false; this.waitExit=true;
     }, {once:true});
-
     await robustPlay(this.video);
   }
 });
 
-/* ===== Cassette: подсветка, боб, клик-зона и старт музыки + скрыть хинт ===== */
+/* ===== кассета: подсветка и клик запуска звука ===== */
 AFRAME.registerComponent('cassette-setup',{
   init(){
-    const onready = ()=>{
-      const root = streetEntity.getObject3D('mesh'); if (!root) return;
+    whenModelReady(root=>{
       let cassette=null;
-      root.traverse(n=>{
-        const nm = (n.name||'').toLowerCase();
-        if (!cassette && (nm==='cassette' || nm==='кассета' || nm.startsWith('cassette'))) cassette = n;
-      });
+      root.traverse(n=>{ const nm=(n.name||'').toLowerCase(); if(!cassette && (nm==='cassette'||nm==='кассета'||nm.startsWith('cassette'))) cassette=n; });
       if (!cassette) return;
 
       cassette.userData.basePos = cassette.position.clone();
       cassette.userData.baseRot = cassette.rotation.clone();
+      this.t0 = performance.now(); this.cassette = cassette; this.tick = this._tick.bind(this);
 
-      this.t0 = performance.now();
-      this.cassette = cassette;
-      this.tick = this._tick.bind(this);
-
+      // клик-зона
       const wp = new THREE.Vector3(); cassette.getWorldPosition(wp);
-      const hp = document.createElement('a-entity');
-      hp.setAttribute('position', `${wp.x} ${wp.y} ${wp.z}`);
-      hp.setAttribute('geometry','primitive: circle; radius: 0.6; segments: 24');
-      hp.setAttribute('material','color:#fff; opacity:0; transparent:true; side:double');
-      hp.classList.add('clickable');
-      hp.addEventListener('click', async ()=>{
+      const s = document.createElement('a-entity');
+      s.setAttribute('position', `${wp.x} ${wp.y} ${wp.z}`);
+      s.setAttribute('geometry','primitive: circle; radius: 0.6; segments: 24');
+      s.setAttribute('material','color:#fff; opacity:0; transparent:true; side:double');
+      s.classList.add('clickable');
+      s.addEventListener('click', async ()=>{
         try{
-          await amb.play();
-          amb.muted = false;
-          document.getElementById('mute').style.display = 'block';
-          cassetteHint.style.display = 'none';
-          updateMuteIcon();
+          await amb.play(); amb.muted=false;
+          document.getElementById('mute').style.display='block';
+          cassetteHint.style.display='none'; updateMuteIcon();
         }catch(e){ console.log('Audio play blocked:', e); }
       });
-      streetEntity.sceneEl.appendChild(hp);
-    };
-    if (!streetEntity.hasLoaded) streetEntity.addEventListener('model-loaded', onready);
-    else onready();
+      streetEntity.sceneEl.appendChild(s);
+    });
   },
   _tick(){
-    const now = performance.now();
-    const t = (now - (this.t0||now))/1000;
     if (!this.cassette) return;
-
-    const bobAmp = 0.5, bob = Math.sin(t * Math.PI/2) * bobAmp;
-    this.cassette.position.y = (this.cassette.userData.basePos?.y || 0) + bob;
-
-    const yawAmp = THREE.MathUtils.degToRad(30);
-    const yaw = Math.sin(t * 0.6) * yawAmp;
-    this.cassette.rotation.y = (this.cassette.userData.baseRot?.y || 0) + yaw;
-
+    const now = performance.now(), t = (now-(this.t0||now))/1000;
+    const bobAmp=0.5, bob=Math.sin(t * Math.PI/2)*bobAmp;
+    this.cassette.position.y = (this.cassette.userData.basePos?.y||0)+bob;
+    const yawAmp=THREE.MathUtils.degToRad(30), yaw=Math.sin(t*0.6)*yawAmp;
+    this.cassette.rotation.y = (this.cassette.userData.baseRot?.y||0)+yaw;
     this.cassette.traverse(n=>{
       if (n.isMesh && n.material){
-        const mats = Array.isArray(n.material) ? n.material : [n.material];
-        mats.forEach(m=>{
-          if (m.emissive === undefined) { m.emissive = new THREE.Color(0x222222); }
-          if (m.emissiveIntensity === undefined) { m.emissiveIntensity = 0.0; }
-          m.emissive.setHex(0xffc14d);
-          m.emissiveIntensity = 0.35 + 0.25*Math.sin(t*2.0);
-        });
+        const mats=Array.isArray(n.material)?n.material:[n.material];
+        mats.forEach(m=>{ if(!m) return; if(m.emissive===undefined) m.emissive=new THREE.Color(0x222222);
+          if(m.emissiveIntensity===undefined) m.emissiveIntensity=0.0;
+          m.emissive.setHex(0xffc14d); m.emissiveIntensity = 0.35 + 0.25*Math.sin(t*2.0); });
       }
     });
   }
 });
 document.querySelector('a-scene').setAttribute('cassette-setup','');
 
-/* ===== РАДАР (лево=лево, вперёд=вверх): розовый popup / жёлтый reveal / голубой plane ===== */
+/* ===== радар ===== */
 (function(){
   const c = document.getElementById('radarCanvas');
   const ctx = c.getContext('2d');
   const cx = c.width/2, cy = c.height/2, R = Math.min(cx, cy) - 2;
   const RADAR_RANGE = 25;
-
   function ring(r,a){ ctx.strokeStyle=`rgba(255,255,255,${a})`; ctx.beginPath(); ctx.arc(cx,cy,r,0,Math.PI*2); ctx.stroke(); }
 
   setInterval(()=>{
     const cam = camEl.object3D, mover = (isTouch ? rig : camEl).object3D; if (!cam || !mover) return;
-
     const fwd = new THREE.Vector3(); cam.getWorldDirection(fwd); fwd.y=0; fwd.normalize(); if(fwd.lengthSq()<1e-6) fwd.set(0,0,-1);
     const right = new THREE.Vector3().crossVectors(fwd,new THREE.Vector3(0,1,0)).normalize();
-
     const mPos = mover.getWorldPosition(new THREE.Vector3());
     const popupTrigs = Array.from(document.querySelectorAll('.trigger-popup'));
     const revealTrigs= Array.from(document.querySelectorAll('.trigger-reveal'));
@@ -642,10 +525,8 @@ document.querySelector('a-scene').setAttribute('cassette-setup','');
     ctx.clearRect(0,0,c.width,c.height);
     ctx.lineWidth=1; ring(R,0.25); ring(R*0.66,0.18); ring(R*0.33,0.14);
 
-    // игрок
     ctx.fillStyle='#fff'; ctx.beginPath(); ctx.arc(cx,cy,Math.max(2, R*0.02), 0, Math.PI*2); ctx.fill();
 
-    // «N»
     const worldNorth = new THREE.Vector3(0,0,-1);
     const nx = worldNorth.dot(right), nz = worldNorth.dot(fwd);
     const rN = R - 8, xN = cx - nx * rN, yN = cy + nz * rN;
@@ -654,7 +535,6 @@ document.querySelector('a-scene').setAttribute('cassette-setup','');
     ctx.textAlign='center'; ctx.textBaseline='middle';
     ctx.fillText('N', xN, yN);
 
-    // шеврон
     const chevrLen = Math.max(12, R*0.24), chevrYOffset = Math.max(10, R*0.10);
     ctx.strokeStyle='rgba(255,255,255,0.9)'; ctx.lineWidth = 2;
     ctx.beginPath();
@@ -664,81 +544,61 @@ document.querySelector('a-scene').setAttribute('cassette-setup','');
     ctx.stroke();
 
     const s=(R-6)/RADAR_RANGE;
-
-    function drawGroup(list, color){
-      ctx.fillStyle=color;
-      list.forEach(el=>{
-        const tp = el.object3D.getWorldPosition(new THREE.Vector3());
-        const dx=tp.x-mPos.x, dz=tp.z-mPos.z;
-        const lx = dx*right.x + dz*right.z;
-        const lz = dx*fwd.x   + dz*fwd.z;
-        const d = Math.hypot(lx,lz);
-        if(d>RADAR_RANGE) return;
-        ctx.beginPath(); ctx.arc(cx - lx*s, cy + lz*s, Math.max(3, R*0.03), 0, Math.PI*2); ctx.fill();
-      });
-    }
-
-    drawGroup(popupTrigs, '#ff69b4'); // розовый
-    drawGroup(revealTrigs,'#ffd400'); // жёлтый
-    drawGroup(planeTrigs, '#65d0ff'); // голубой
+    function draw(list,color){ ctx.fillStyle=color; list.forEach(el=>{ const tp=el.object3D.getWorldPosition(new THREE.Vector3());
+      const dx=tp.x-mPos.x, dz=tp.z-mPos.z; const lx=dx*right.x+dz*right.z; const lz=dx*fwd.x+dz*fwd.z;
+      const d=Math.hypot(lx,lz); if(d>RADAR_RANGE) return; ctx.beginPath(); ctx.arc(cx-lx*s, cy+lz*s, Math.max(3,R*0.03), 0, Math.PI*2); ctx.fill(); }); }
+    draw(popupTrigs,'#ff69b4'); draw(revealTrigs,'#ffd400'); draw(planeTrigs,'#65d0ff');
   },80);
 })();
 
-/* ===== Дирижёр триггеров: создаёт все триггеры по ИМЕНАМ УЗЛОВ ===== */
+/* ===== дирижёр: создаёт триггеры по именам узлов, и скрывает нужные узлы на старте ===== */
 AFRAME.registerComponent('trigger-director',{
   init(){
-    const onready = ()=>{
+    whenModelReady(root=>{
       const scene = this.el.sceneEl;
-      const root = streetEntity.getObject3D('mesh'); if (!root) return;
 
-      // helper: создать entity-триггер в мировой позиции узла
-      const makeTriggerAtNode = (node, klass, compName, compValue)=>{
-        const wp = new THREE.Vector3(); node.getWorldPosition(wp);
-        const e = document.createElement('a-entity');
-        e.classList.add(klass);
+      // helper создать entity в мировой позиции узла
+      const makeAtNode = (node, klass, comp, value) => {
+        const wp=new THREE.Vector3(); node.getWorldPosition(wp);
+        const e=document.createElement('a-entity'); e.classList.add(klass);
         e.setAttribute('position', `${wp.x} ${wp.y} ${wp.z}`);
-        e.setAttribute(compName, compValue);
-        scene.appendChild(e);
-        return e;
+        e.setAttribute(comp, value); scene.appendChild(e); return e;
       };
 
-      /* ===== POPUP-VIDEO (HUD) ===== */
-      const defLoops = 1;
-      const cat     = findNodeByName(root,'cat');     if (cat)     makeTriggerAtNode(cat,     'trigger-popup', 'popup-video-hud', 'radius:1.5; loops:'+defLoops+'; hysteresis:0.2; side:right; src:assets/video/clip1.mp4');
-      const pharma  = findNodeByName(root,'pharma');  if (pharma)  makeTriggerAtNode(pharma,  'trigger-popup', 'popup-video-hud', 'radius:2.0; loops:'+defLoops+'; hysteresis:0.2; side:left;  src:assets/video/pharma.mp4');
-      const petals  = findNodeByName(root,'petals');  if (petals)  makeTriggerAtNode(petals,  'trigger-popup', 'popup-video-hud', 'radius:1.5; loops:'+defLoops+'; hysteresis:0.2; side:right; src:assets/video/petals.mp4');
-      const tree    = findNodeByName(root,'tree');    if (tree)    makeTriggerAtNode(tree,    'trigger-popup', 'popup-video-hud', 'radius:1.0; loops:'+defLoops+'; hysteresis:0.2; side:left;  src:assets/video/tree.mp4');
+      // Скрыть по сценарию сразу
+      ['dog','gyros','sunset2','sunset3','waves'].forEach(name=>{
+        const n = findNodeByName(root,name); if(n){ n.visible=false; n.scale.setScalar(0); }
+      });
 
-      /* ===== REVEAL gyros по триггеру taverna ===== */
+      // POPUP HUD
+      const defLoops=1;
+      const cat     = findNodeByName(root,'cat');     if (cat)    makeAtNode(cat,    'trigger-popup','popup-video-hud', 'radius:1.5; loops:'+defLoops+'; hysteresis:0.2; side:right; src:assets/video/clip1.mp4');
+      const pharma  = findNodeByName(root,'pharma');  if (pharma) makeAtNode(pharma, 'trigger-popup','popup-video-hud', 'radius:2.0; loops:'+defLoops+'; hysteresis:0.2; side:left;  src:assets/video/pharma.mp4');
+      const petals  = findNodeByName(root,'petals');  if (petals) makeAtNode(petals, 'trigger-popup','popup-video-hud', 'radius:1.5; loops:'+defLoops+'; hysteresis:0.2; side:right; src:assets/video/petals.mp4');
+      const tree    = findNodeByName(root,'tree');    if (tree)   makeAtNode(tree,   'trigger-popup','popup-video-hud', 'radius:1.0; loops:'+defLoops+'; hysteresis:0.2; side:left;  src:assets/video/tree.mp4');
+
+      // GYROS reveal у "taverna"
       const taverna = findNodeByName(root,'taverna');
-      if (taverna){
-        const e = makeTriggerAtNode(taverna, 'trigger-reveal', 'reveal-node-rot-fade',
-          'targetName:gyros; radius:2.0; hysteresis:0.2; spinDegPerSec:60; lifeMs:15000; fadeMs:800');
-      }
+      if (taverna) makeAtNode(taverna,'trigger-reveal','reveal-node-rot-fade','targetName:gyros; radius:2.0; hysteresis:0.2; spinDegPerSec:60; lifeMs:15000; fadeMs:800');
 
-      /* ===== ATTENTION: звук + dog ===== */
+      // ATTENTION: звук + dog
       const attention = findNodeByName(root,'attention');
-      if (attention){
-        const e = makeTriggerAtNode(attention, 'trigger-reveal', 'attention-dog',
-          'radius:1.0; hysteresis:0.2; lifeMs:6000; fadeMs:600');
-      }
+      if (attention) makeAtNode(attention,'trigger-reveal','attention-dog','radius:1.0; hysteresis:0.2; lifeMs:6000; fadeMs:600');
 
-      /* ===== PLANE VIDEOS: sunset2, sunset3, waves (один прогон) ===== */
-      const sunset2 = findNodeByName(root,'sunset2'); if (sunset2) { const e = document.createElement('a-entity'); e.classList.add('trigger-plane'); e.setAttribute('plane-video-once','nodeName:sunset2; videoSrc:assets/video/sunset2.mp4; radius:0.7; hysteresis:0.1'); scene.appendChild(e); }
-      const sunset3 = findNodeByName(root,'sunset3'); if (sunset3) { const e = document.createElement('a-entity'); e.classList.add('trigger-plane'); e.setAttribute('plane-video-once','nodeName:sunset3; videoSrc:assets/video/sunset3.mp4; radius:0.7; hysteresis:0.1'); scene.appendChild(e); }
-      const waves   = findNodeByName(root,'waves');   if (waves)   { const e = document.createElement('a-entity'); e.classList.add('trigger-plane'); e.setAttribute('plane-video-once','nodeName:waves;   videoSrc:assets/video/waves.mp4;   radius:0.7; hysteresis:0.1'); scene.appendChild(e); }
-    };
-    if (!streetEntity.hasLoaded) streetEntity.addEventListener('model-loaded', onready);
-    else onready();
+      // Плейны-видео
+      const sunset2 = findNodeByName(root,'sunset2'); if (sunset2){ const e=document.createElement('a-entity'); e.classList.add('trigger-plane'); e.setAttribute('plane-video-once','nodeName:sunset2; videoSrc:assets/video/sunset2.mp4; radius:0.7; hysteresis:0.1'); scene.appendChild(e); }
+      const sunset3 = findNodeByName(root,'sunset3'); if (sunset3){ const e=document.createElement('a-entity'); e.classList.add('trigger-plane'); e.setAttribute('plane-video-once','nodeName:sunset3; videoSrc:assets/video/sunset3.mp4; radius:0.7; hysteresis:0.1'); scene.appendChild(e); }
+      const waves   = findNodeByName(root,'waves');   if (waves)  { const e=document.createElement('a-entity'); e.classList.add('trigger-plane'); e.setAttribute('plane-video-once','nodeName:waves;   videoSrc:assets/video/waves.mp4;   radius:0.7; hysteresis:0.1'); scene.appendChild(e); }
+    });
   }
 });
 document.querySelector('a-scene').setAttribute('trigger-director','');
 
-/* ===== DIAG: P — показать первый поп-ап (если рядом) ===== */
+/* ===== DIAG: клавиша P — вручную показать первый поп-ап (для проверки видео) ===== */
 window.addEventListener('keydown', e=>{
   if (e.key.toLowerCase()==='p'){
     const trig = document.querySelector('.trigger-popup');
-    trig?.components['popup-video-hud']?.show(true);
+    trig?.components['popup-video-hud']?.show();
   }
 });
 </script>
