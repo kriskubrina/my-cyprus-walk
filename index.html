@@ -11,6 +11,8 @@
     *{ -webkit-tap-highlight-color:transparent; }
     html,body{ margin:0; height:100%; background:#000; overflow:hidden; }
     a-loading-screen{ display:none !important; }
+    /* прибиваем «левый» диалог доступа к гироскопу */
+    .a-dialog{ display:none !important; }
 
     #mute{
       position:fixed; left:12px; top:12px; padding:10px; border:0; border-radius:10px;
@@ -99,7 +101,6 @@
     <img id="skyTex" src="assets/images/sky.jpg" crossorigin="anonymous">
     <a-asset-item id="world" src="assets/models/limassol-walk.glb"></a-asset-item>
     <video id="popupVideo" preload="metadata" playsinline webkit-playsinline crossorigin="anonymous"></video>
-
     <!-- общий скрытый видео-элемент для iOS плейнов -->
     <video id="planeVideoMobile" preload="metadata" playsinline webkit-playsinline muted style="display:none"></video>
   </a-assets>
@@ -124,7 +125,6 @@
   <video id="popupHud" playsinline webkit-playsinline preload="metadata"></video>
 </div>
 
-<!-- кнопка -->
 <button id="mute" aria-label="Toggle sound">🔇</button>
 <div id="joy-move" class="joy"></div>
 <div id="joy-rot"  class="joy"></div>
@@ -132,7 +132,7 @@
 <div id="radar"><canvas id="radarCanvas"></canvas></div>
 
 <script>
-/* ===== базовые refs ===== */
+/* ===== helpers & refs ===== */
 const muteBtn = document.getElementById('mute');
 const popupWrap = document.getElementById('popup');
 const popupHud = document.getElementById('popupHud');
@@ -144,42 +144,35 @@ const planeVideoMobile = document.getElementById('planeVideoMobile');
 
 function isiOS(){ return /iP(hone|ad|od)/.test(navigator.platform) || (navigator.userAgent.includes('Mac') && 'ontouchend' in document); }
 
-/* ===== WebAudio фон из 9с ===== */
+/* ===== WebAudio фон из 9с, единый mute ===== */
 let audioCtx=null, ambGain=null, ambBuffer=null, ambSource=null, ambStarted=false, ambMuted=false;
-async function loadAmbBuffer(url){
-  const res = await fetch(url, {cache:'force-cache'});
-  const arr = await res.arrayBuffer();
-  return await audioCtx.decodeAudioData(arr);
-}
+async function loadAmbBuffer(url){ const res = await fetch(url, {cache:'force-cache'}); const arr = await res.arrayBuffer(); return await (audioCtx||new (window.AudioContext||window.webkitAudioContext)()).decodeAudioData(arr); }
 async function startBackgroundFrom9s(){
   if (ambStarted) return;
   if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
   if (!ambGain){ ambGain = audioCtx.createGain(); ambGain.gain.value = ambMuted?0:1; ambGain.connect(audioCtx.destination); }
   if (!ambBuffer) ambBuffer = await loadAmbBuffer('assets/audio/Analog_Mannequin%20Milk%20Cassette%20X.mp3%20-%20Demo.mp3');
-  ambSource = audioCtx.createBufferSource();
-  ambSource.buffer = ambBuffer; ambSource.loop = true;
-  ambSource.connect(ambGain);
+  ambSource = audioCtx.createBufferSource(); ambSource.buffer = ambBuffer; ambSource.loop = true; ambSource.connect(ambGain);
   const offset = Math.min(ambBuffer.duration-0.1, 9);
   ambSource.start(0, offset);
   ambStarted = true;
 }
-function toggleAmbMute(){
-  ambMuted = !ambMuted;
-  if (ambGain) ambGain.gain.value = ambMuted?0:1;
-  muteBtn.textContent = ambMuted ? '🔇' : '🔊';
-}
+function toggleAmbMute(){ ambMuted = !ambMuted; if (ambGain) ambGain.gain.value = ambMuted?0:1; muteBtn.textContent = ambMuted ? '🔇' : '🔊'; }
 muteBtn.addEventListener('click', toggleAmbMute);
 
-/* ===== медиа-разблокировка ===== */
+/* ===== медиа-разблокировка: резюмим Оба контекста ===== */
 let userMediaUnlocked=false;
+function resumeSceneAudioContext(){
+  try{
+    const ctx = document.querySelector('a-scene')?.audioListener?.context;
+    if (ctx && ctx.state !== 'running') ctx.resume().catch(()=>{});
+  }catch(_){}
+}
 function unlockMedia(){
   if (userMediaUnlocked) return;
   userMediaUnlocked=true;
-  try{
-    if (audioCtx && audioCtx.state!=='running') audioCtx.resume();
-    const listener = document.querySelector('a-scene')?.audioListener;
-    if (listener?.context?.state !== 'running') listener.context.resume().catch(()=>{});
-  }catch(_){}
+  try{ if (audioCtx && audioCtx.state!=='running') audioCtx.resume(); }catch(_){}
+  resumeSceneAudioContext();
 }
 ['touchstart','pointerdown','mousedown'].forEach(ev=>window.addEventListener(ev, unlockMedia, {passive:true}));
 
@@ -226,10 +219,10 @@ if (isTouch){
   jmWrap.style.display='block'; jrWrap.style.display='block';
   const jm=nipplejs.create({ zone:jmWrap, mode:'static', size:JOY_SIZE, position:{left:'50%',top:'50%'}, color:'white', restOpacity:0.85 });
   jm.on('move',(_,d)=>{ if(!d||!d.vector) return; moveActive=true; moveVec.x=d.vector.x; moveVec.y=d.vector.y; });
-  jm.on('end', resetSticks); jmWrap.addEventListener('touchcancel', resetSticks); jmWrap.addEventListener('pointercancel', resetSticks);
+  jm.on('end', resetSticks);
   const jr=nipplejs.create({ zone:jrWrap, mode:'static', size:JOY_SIZE, position:{left:'50%',top:'50%'}, color:'white', restOpacity:0.85 });
   jr.on('move',(_,d)=>{ if(!d||!d.vector) return; rotActive=true; rotVec.x=d.vector.x; rotVec.y=d.vector.y; });
-  jr.on('end', resetSticks); jrWrap.addEventListener('touchcancel', resetSticks); jrWrap.addEventListener('pointercancel', resetSticks);
+  jr.on('end', resetSticks);
 
   AFRAME.registerComponent('mobile-camera-control',{
     schema:{ moveSpeed:{default:1.9}, rotSpeed:{default:1.9} },
@@ -253,7 +246,7 @@ if (isTouch){
 }
 const moverEl = isTouch ? rig : camEl;
 
-/* ===== helpers ===== */
+/* ===== утилиты ===== */
 function findNodeByName(root,name){
   const t=name.toLowerCase(); let f=null;
   root.traverse(n=>{ if(f) return; const nm=(n.name||'').toLowerCase(); if(nm===t || nm.startsWith(t)) f=n; });
@@ -276,14 +269,14 @@ async function robustPlay(video, {tries=10, step=0.05, wait=260}={}){
   return ok;
 }
 
-/* ===== iOS анти-конфликт медиа (дебаунс 1.2с) ===== */
+/* ===== iOS дебаунс медиа ( ~1.2с между новыми медиасессиями) ===== */
 let iOSLastMediaStart=0;
 function iOSCanStartMedia(){
   if (!isiOS()) return true;
   const now=performance.now(); if (now - iOSLastMediaStart < 1200) return false; iOSLastMediaStart=now; return true;
 }
 
-/* ===== кассета: анимация + старт WebAudio (9с) ===== */
+/* ===== кассета: анимация + старт WebAudio (9с) + резюмим контекст сцены ===== */
 AFRAME.registerComponent('cassette-setup',{
   init(){
     this.ready=false; this.cassette=null; this.t0=performance.now();
@@ -299,7 +292,7 @@ AFRAME.registerComponent('cassette-setup',{
       s.setAttribute('material','color:#fff; opacity:0; transparent:true; side:double');
       s.classList.add('clickable');
       s.addEventListener('click', async ()=>{
-        unlockMedia();
+        unlockMedia(); resumeSceneAudioContext();
         try{
           await startBackgroundFrom9s();
           document.getElementById('mute').style.display='block';
@@ -329,7 +322,7 @@ AFRAME.registerComponent('cassette-setup',{
 });
 document.querySelector('a-scene').setAttribute('cassette-setup','');
 
-/* ===== POPUP HUD (видео с аудио; не трогаем фон) ===== */
+/* ===== HUD pop-up (включая iOS muted→unmute старт) ===== */
 AFRAME.registerComponent('popup-video-hud',{
   schema:{ radius:{default:2.0}, loops:{default:1}, hysteresis:{default:0.10}, side:{default:'right'}, src:{default:'assets/video/clip1.mp4'} },
   init(){ this.active=false; this.waitExit=false; this.looped=0; this.video=popupHud; this._onEnded=this.onEnded.bind(this); },
@@ -344,13 +337,27 @@ AFRAME.registerComponent('popup-video-hud',{
     if (isTouch && !userMediaUnlocked){ const retry=()=>{ window.removeEventListener('touchstart', retry); this.show(); }; window.addEventListener('touchstart', retry, {once:true}); return; }
     if (!iOSCanStartMedia()) return;
     this.cleanup(); this.active=true; this.looped=0;
+
     if (this.data.side==='left'){ popupWrap.style.left='12px'; popupWrap.style.right='auto'; } else { popupWrap.style.right='12px'; popupWrap.style.left='auto'; }
     popupWrap.style.display='block';
+
     try{
       this.video.removeEventListener('ended', this._onEnded);
-      this.video.src=this.data.src; this.video.loop=false; this.video.muted=false; this.video.load(); this.video.currentTime=0.05;
+      this.video.src=this.data.src; this.video.loop=false; this.video.load(); this.video.currentTime=0.05;
+
+      // iOS: muted→play→unmute
+      if (isiOS()){
+        this.video.muted = true;
+        const ok = await robustPlay(this.video);
+        if (!ok){ this.hide(); return; }
+        setTimeout(()=>{ try{ this.video.muted=false; }catch(_){} }, 120);
+      } else {
+        this.video.muted = false;
+        const ok = await robustPlay(this.video);
+        if (!ok){ this.hide(); return; }
+      }
+
       this.video.addEventListener('ended', this._onEnded);
-      const ok=await robustPlay(this.video); if(!ok){ this.hide(); }
     }catch(_){ this.hide(); }
   },
   onEnded(){
@@ -392,7 +399,7 @@ AFRAME.registerComponent('crumb-trail',{
 });
 (isTouch?rig:camEl).setAttribute('crumb-trail','step:0.004; radius:0.007; color:#00e0ff; fadeSeconds:15; max:30000; y:0.03');
 
-/* ===== reveal узла (gyros) + звук gyros (как раньше) ===== */
+/* ===== reveal узла (gyros) с позиционным звуком ===== */
 AFRAME.registerComponent('reveal-node-rot-fade',{
   schema:{ targetName:{default:''}, radius:{default:2.0}, hysteresis:{default:0.20}, spinDegPerSec:{default:60}, lifeMs:{default:15000}, fadeMs:{default:800}, soundId:{default:'gyrosAudio'} },
   init(){ this.armed=true; this.active=false; this.targetNode=null; this.spawnTime=0; this.fading=false; this.fadeStart=0; this.soundEnt=null;
@@ -416,10 +423,11 @@ AFRAME.registerComponent('reveal-node-rot-fade',{
 
     if (this.armed && d<=this.data.radius && !this.active){
       if (!iOSCanStartMedia()) return;
+      resumeSceneAudioContext(); // на всякий случай
       this.active=true; this.fading=false; this.fadeStart=0; this.spawnTime=now;
       this.targetNode.visible=true; this.targetNode.scale.setScalar(1);
       try{ this.soundEnt?.components.sound.stopSound(); }catch(_){}
-      try{ this.soundEnt?.components.sound.playSound(); }catch(_){}
+      try{ this.soundEnt?.components.sound.playSound(); }catch(_){ setTimeout(()=>this.soundEnt?.components.sound.playSound(), 120); }
     } else if (!this.armed && d>(this.data.radius+this.data.hysteresis) && !this.active){ this.armed=true; }
 
     if (this.active){
@@ -427,7 +435,7 @@ AFRAME.registerComponent('reveal-node-rot-fade',{
       this.targetNode.rotation.y += (this.data.spinDegPerSec*Math.PI/180)*sec;
       if (!this.fading && (now - this.spawnTime) >= this.data.lifeMs){ this.fading=true; this.fadeStart=now; }
       if (this.fading){
-        const t=(now - this.fadeStart)/this.data.fadeMs; const k=Math.min(1,Math.max(0,t)); const ease=k*k*(3-2*k); const s=1-ease;
+        const t=(now - this.fadeStart)/this.data.fadeMs; const k=Math.min(1,Math.max(0,t)); const s=1-(k*k*(3-2*k));
         this.targetNode.scale.setScalar(Math.max(0,s));
         if (k>=1){ this.targetNode.visible=false; this.active=false; this.fading=false; }
       }
@@ -435,7 +443,7 @@ AFRAME.registerComponent('reveal-node-rot-fade',{
   }
 });
 
-/* ===== attention: собака (логируем узлы, звук позиционный) ===== */
+/* ===== attention: собака (позиционный звук) ===== */
 AFRAME.registerComponent('attention-dog',{
   schema:{ radius:{default:1.0}, hysteresis:{default:0.20}, lifeMs:{default:6000}, fadeMs:{default:600} },
   init(){ this.armed=true; this.playing=false; this.dogNode=null; this.soundEl=null; this.spawnTime=0; this.fading=false; this.fadeStart=0;
@@ -470,22 +478,22 @@ AFRAME.registerComponent('attention-dog',{
     }
   },
   trigger(){
+    resumeSceneAudioContext();
     this.playing=true; this.spawnTime=this.el.sceneEl.time; this.fading=false;
     this.dogNode.visible=true; this.dogNode.scale.setScalar(1);
     try{ this.soundEl?.components.sound.stopSound(); }catch(_){}
-    try{ this.soundEl?.components.sound.playSound(); }catch(_){}
+    try{ this.soundEl?.components.sound.playSound(); }catch(_){ setTimeout(()=>this.soundEl?.components.sound.playSound(),120); }
   }
 });
 
-/* ===== Плейны-видео: десктоп/Android — как раньше (картинка+звук); iOS — один общий muted-видео, без звука ===== */
+/* ===== Плейны: iOS — общий muted video (картинка), Android/desktop — как раньше (со звуком), цвета — MeshBasic ===== */
 AFRAME.registerComponent('plane-video-once',{
   schema:{ nodeName:{default:''}, videoSrc:{default:''}, radius:{default:2.5}, hysteresis:{default:0.10} },
   init(){
     this.node=null; this.ready=false; this.playing=false; this.waitExit=false;
-    this.video=null; this.tex=null; this.materials=[]; this.audioEl=null;
+    this.video=null; this.tex=null;
     whenModelReady(root=>{
       this.node=findNodeByName(root, this.data.nodeName); if(!this.node) return;
-      // только скрываем — без правки масштаба
       this.node.visible=false; this.ready=true;
     });
   },
@@ -503,14 +511,10 @@ AFRAME.registerComponent('plane-video-once',{
 
     this.playing=true; this.node.visible=true;
 
-    const makeMaterial = (tex)=>{
-      const m = new THREE.MeshBasicMaterial({ map:tex, side:THREE.DoubleSide }); m.toneMapped=false;
-      return m;
-    };
+    const makeMaterial = (tex)=>{ const m = new THREE.MeshBasicMaterial({ map:tex, side:THREE.DoubleSide }); m.toneMapped=false; return m; };
 
     if (isiOS()){
-      // iOS: общий muted video → VideoTexture, без звука
-      this.video = planeVideoMobile; // общий
+      this.video = planeVideoMobile; // общий muted video
       try{ this.video.pause(); }catch(_){}
       this.video.src = this.data.videoSrc; this.video.load(); this.video.currentTime=0.05;
       const ok = await robustPlay(this.video);
@@ -524,19 +528,15 @@ AFRAME.registerComponent('plane-video-once',{
       const meshes=[]; this.node.traverse(n=>{ if(n.isMesh) meshes.push(n); });
       meshes.forEach(n=>{
         n.material=mat;
-        if (n.material.map){
-          n.material.map.repeat.x=-1; n.material.map.offset.x=1; n.material.map.needsUpdate=true; // горизонтальный флип
-        }
+        if (n.material.map){ n.material.map.repeat.x=-1; n.material.map.offset.x=1; n.material.map.needsUpdate=true; }
       });
 
-      // авто-закрытие по окончанию (если видео общее и его переключат — закроем через 60с)
-      setTimeout(()=>{ if (this.playing) this.finish(); }, 60000);
-      // заметка: звука на iOS у плейнов нет — намеренно, чтобы не падал WebKit
+      setTimeout(()=>{ if (this.playing) this.finish(); }, 60000); // авто-закрытие
     } else {
-      // Десктоп/Android: как раньше — своё видео + свой звук из файла
       this.video = document.createElement('video');
       this.video.src=this.data.videoSrc; this.video.playsInline=true; this.video.preload='metadata'; this.video.crossOrigin='anonymous';
-      this.video.loop=false; this.video.muted=false; // звук включён
+      this.video.loop=false; this.video.muted=false;
+
       this.tex = new THREE.VideoTexture(this.video);
       if (THREE.SRGBColorSpace) this.tex.colorSpace = THREE.SRGBColorSpace;
       this.tex.minFilter=THREE.LinearFilter; this.tex.magFilter=THREE.LinearFilter; this.tex.needsUpdate=true;
@@ -545,9 +545,7 @@ AFRAME.registerComponent('plane-video-once',{
       const meshes=[]; this.node.traverse(n=>{ if(n.isMesh) meshes.push(n); });
       meshes.forEach(n=>{
         n.material=mat;
-        if (n.material.map){
-          n.material.map.repeat.x=-1; n.material.map.offset.x=1; n.material.map.needsUpdate=true; // флип
-        }
+        if (n.material.map){ n.material.map.repeat.x=-1; n.material.map.offset.x=1; n.material.map.needsUpdate=true; }
       });
 
       this.video.addEventListener('ended', ()=>this.finish(), {once:true});
@@ -565,7 +563,7 @@ AFRAME.registerComponent('plane-video-once',{
   }
 });
 
-/* ===== Радар (как раньше) ===== */
+/* ===== Радар ===== */
 (function(){
   const c=document.getElementById('radarCanvas'); const ctx=c.getContext('2d');
   const cx=c.width/2, cy=c.height/2, R=Math.min(cx,cy)-2, RADAR_RANGE=25;
@@ -613,7 +611,7 @@ AFRAME.registerComponent('plane-video-once',{
   },80);
 })();
 
-/* ===== Дирижёр: триггеры, радиусы (pharma=2.5м), баундинг игрока ===== */
+/* ===== Дирижёр: все триггеры (cat, pharma, petals, tree, taverna/gyros, attention/dog, плейны) ===== */
 AFRAME.registerComponent('trigger-director',{
   init(){
     whenModelReady(root=>{
@@ -624,7 +622,9 @@ AFRAME.registerComponent('trigger-director',{
       box.min.x-=3; box.min.z-=3; box.max.x+=3; box.max.z+=3;
       const bounds={minX:box.min.x, maxX:box.max.x, minZ:box.min.z, maxZ:box.max.z};
       AFRAME.registerComponent('clamp-to-bounds',{tick:function(){
-        const p=moverEl.object3D.position; p.x=Math.max(bounds.minX, Math.min(bounds.maxX, p.x)); p.z=Math.max(bounds.minZ, Math.min(bounds.maxZ, p.z));
+        const p=(AFRAME.utils.device.isMobile()?rig:camEl).object3D.position;
+        p.x=Math.max(bounds.minX, Math.min(bounds.maxX, p.x));
+        p.z=Math.max(bounds.minZ, Math.min(bounds.maxZ, p.z));
       }});
       document.querySelector('a-scene').setAttribute('clamp-to-bounds','');
 
@@ -637,22 +637,22 @@ AFRAME.registerComponent('trigger-director',{
       // скрыть по сценарию
       ['dog','gyros','sunset2','sunset3','waves'].forEach(nm=>{ const n=findNodeByName(root,nm); if(n){ n.visible=false; } });
 
-      // POPUP HUD (cat, pharma, petals, tree)
+      // HUD pop-up
       const defLoops=1;
       const cat=findNodeByName(root,'cat');     if(cat)    makeAtNode(cat,   'trigger-popup','popup-video-hud','radius:1.5; loops:'+defLoops+'; hysteresis:0.2; side:right; src:assets/video/clip1.mp4');
-      const pharma=findNodeByName(root,'pharma');if(pharma) makeAtNode(pharma,'trigger-popup','popup-video-hud','radius:2.5; loops:'+defLoops+'; hysteresis:0.2; side:left;  src:assets/video/pharma.mp4'); /* 2.5м */
+      const pharma=findNodeByName(root,'pharma');if(pharma) makeAtNode(pharma,'trigger-popup','popup-video-hud','radius:2.5; loops:'+defLoops+'; hysteresis:0.2; side:left;  src:assets/video/pharma.mp4');
       const petals=findNodeByName(root,'petals');if(petals) makeAtNode(petals,'trigger-popup','popup-video-hud','radius:3.0; loops:'+defLoops+'; hysteresis:0.2; side:right; src:assets/video/petals.mp4');
       const tree=findNodeByName(root,'tree');    if(tree)   makeAtNode(tree,  'trigger-popup','popup-video-hud','radius:3.0; loops:'+defLoops+'; hysteresis:0.2; side:left;  src:assets/video/tree.mp4');
 
-      // GYROS (taverna)
+      // gyros + звук
       const taverna=findNodeByName(root,'taverna');
       if (taverna) makeAtNode(taverna,'trigger-reveal','reveal-node-rot-fade','targetName:gyros; radius:2.0; hysteresis:0.2; spinDegPerSec:60; lifeMs:15000; fadeMs:800; soundId:gyrosAudio');
 
-      // ATTENTION: собака
+      // attention: собака
       const attention=findNodeByName(root,'attention');
       if (attention) makeAtNode(attention,'trigger-reveal','attention-dog','radius:1.0; hysteresis:0.2; lifeMs:6000; fadeMs:600');
 
-      // Плейны (2.5м) — логика внутри компонента разделяет iOS/не iOS
+      // Плейны (2.5м) — iOS: без звука; desktop/Android: со звуком
       ['sunset2','sunset3','waves'].forEach(name=>{
         const n=findNodeByName(root,name);
         if (n){ const e=makeAtNode(n,'trigger-plane', null, null);
@@ -664,7 +664,7 @@ AFRAME.registerComponent('trigger-director',{
 });
 document.querySelector('a-scene').setAttribute('trigger-director','');
 
-/* ===== DIAG: P — вручную показать первый поп-ап ===== */
+/* ===== DIAG: P — ручной старт первого поп-апа ===== */
 window.addEventListener('keydown', e=>{
   if (e.key.toLowerCase()==='p'){
     document.querySelector('.trigger-popup')?.components['popup-video-hud']?.show();
