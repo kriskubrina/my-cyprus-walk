@@ -92,14 +92,16 @@
 <a-scene
   renderer="colorManagement:true; physicallyCorrectLights:false; antialias:true; precision:mediump; powerPreference:high-performance"
   loading-screen="enabled:false"
-  device-orientation-permission-ui="enabled:true"
+  device-orientation-permission-ui="enabled:false"
   vr-mode-ui="enabled:false"
 >
   <a-assets>
     <img id="skyTex" src="assets/images/sky.jpg" crossorigin="anonymous">
     <a-asset-item id="world" src="assets/models/limassol-walk.glb"></a-asset-item>
     <video id="popupVideo" preload="metadata" playsinline webkit-playsinline crossorigin="anonymous"></video>
-    <a-asset-item id="gyros" src="assets/models/gyros.gltf"></a-asset-item>
+
+    <!-- общий скрытый видео-элемент для iOS плейнов -->
+    <video id="planeVideoMobile" preload="metadata" playsinline webkit-playsinline muted style="display:none"></video>
   </a-assets>
 
   <a-sky src="#skyTex" rotation="0 -90 0"></a-sky>
@@ -122,11 +124,7 @@
   <video id="popupHud" playsinline webkit-playsinline preload="metadata"></video>
 </div>
 
-<!-- аудио -->
-<audio id="amb" src="assets/audio/Analog_Mannequin%20Milk%20Cassette%20X.mp3%20-%20Demo.mp3" preload="auto" loop></audio>
-<audio id="dogAudio" src="assets/audio/dog.mp3" preload="auto"></audio>
-<audio id="gyrosAudio" src="assets/audio/gyros.mp3" preload="auto"></audio>
-
+<!-- кнопка -->
 <button id="mute" aria-label="Toggle sound">🔇</button>
 <div id="joy-move" class="joy"></div>
 <div id="joy-rot"  class="joy"></div>
@@ -134,241 +132,232 @@
 <div id="radar"><canvas id="radarCanvas"></canvas></div>
 
 <script>
-/* ===== refs ===== */
-const amb = document.getElementById('amb');
+/* ===== базовые refs ===== */
 const muteBtn = document.getElementById('mute');
 const popupWrap = document.getElementById('popup');
 const popupHud = document.getElementById('popupHud');
-const rig = document.getElementById('rig');
-const camEl = document.getElementById('player');
-const hud = document.getElementById('hud');
-const boot = document.getElementById('boot');
+const rig = document.getElementById('rig'); const camEl = document.getElementById('player');
+const hud = document.getElementById('hud'); const boot = document.getElementById('boot');
 const streetEntity = document.getElementById('streetEntity');
-const cassetteHint = document.getElementById('cassette-hint');
-const cassetteRing = document.getElementById('cassette-ring');
-const dogAudioEl = document.getElementById('dogAudio');
-const gyrosAudioEl = document.getElementById('gyrosAudio');
+const cassetteHint = document.getElementById('cassette-hint'); const cassetteRing = document.getElementById('cassette-ring');
+const planeVideoMobile = document.getElementById('planeVideoMobile');
 
-let userMediaUnlocked = false;
 function isiOS(){ return /iP(hone|ad|od)/.test(navigator.platform) || (navigator.userAgent.includes('Mac') && 'ontouchend' in document); }
+
+/* ===== WebAudio фон из 9с ===== */
+let audioCtx=null, ambGain=null, ambBuffer=null, ambSource=null, ambStarted=false, ambMuted=false;
+async function loadAmbBuffer(url){
+  const res = await fetch(url, {cache:'force-cache'});
+  const arr = await res.arrayBuffer();
+  return await audioCtx.decodeAudioData(arr);
+}
+async function startBackgroundFrom9s(){
+  if (ambStarted) return;
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if (!ambGain){ ambGain = audioCtx.createGain(); ambGain.gain.value = ambMuted?0:1; ambGain.connect(audioCtx.destination); }
+  if (!ambBuffer) ambBuffer = await loadAmbBuffer('assets/audio/Analog_Mannequin%20Milk%20Cassette%20X.mp3%20-%20Demo.mp3');
+  ambSource = audioCtx.createBufferSource();
+  ambSource.buffer = ambBuffer; ambSource.loop = true;
+  ambSource.connect(ambGain);
+  const offset = Math.min(ambBuffer.duration-0.1, 9);
+  ambSource.start(0, offset);
+  ambStarted = true;
+}
+function toggleAmbMute(){
+  ambMuted = !ambMuted;
+  if (ambGain) ambGain.gain.value = ambMuted?0:1;
+  muteBtn.textContent = ambMuted ? '🔇' : '🔊';
+}
+muteBtn.addEventListener('click', toggleAmbMute);
+
+/* ===== медиа-разблокировка ===== */
+let userMediaUnlocked=false;
 function unlockMedia(){
   if (userMediaUnlocked) return;
-  userMediaUnlocked = true;
+  userMediaUnlocked=true;
   try{
+    if (audioCtx && audioCtx.state!=='running') audioCtx.resume();
     const listener = document.querySelector('a-scene')?.audioListener;
-    if (listener && listener.context && listener.context.state !== 'running'){
-      listener.context.resume().catch(()=>{});
-    }
+    if (listener?.context?.state !== 'running') listener.context.resume().catch(()=>{});
   }catch(_){}
 }
-window.addEventListener('touchstart', unlockMedia, {passive:true, once:false});
-window.addEventListener('pointerdown', unlockMedia, {passive:true, once:false});
-window.addEventListener('mousedown', unlockMedia, {passive:true, once:false});
+['touchstart','pointerdown','mousedown'].forEach(ev=>window.addEventListener(ev, unlockMedia, {passive:true}));
 
 /* ===== iOS рендер-щадилка ===== */
 document.querySelector('a-scene').addEventListener('loaded', ()=>{
   if (isiOS()){
-    try{
-      const r = document.querySelector('a-scene').renderer;
-      r.setPixelRatio(1);
-      r.antialias = false;
-    }catch(_){}
+    try{ const r = document.querySelector('a-scene').renderer; r.setPixelRatio(1); r.antialias = false; }catch(_){}
   }
 });
 
-/* ===== надёжное ожидание модели ===== */
+/* ===== ожидание модели ===== */
 function whenModelReady(cb){
-  const run = () => {
-    const root = streetEntity.getObject3D('mesh');
-    if (root) cb(root);
-  };
+  const run = () => { const root = streetEntity.getObject3D('mesh'); if (root) cb(root); };
   if (streetEntity.hasLoaded && streetEntity.getObject3D('mesh')) run();
   else streetEntity.addEventListener('model-loaded', run, {once:true});
 }
-
-/* ===== скрыть лоадер ===== */
-function hideBoot(){ boot.style.display = 'none'; }
+function hideBoot(){ boot.style.display='none'; }
 streetEntity.addEventListener('model-loaded', hideBoot, {once:true});
 setTimeout(hideBoot, 10000);
 
-/* ===== mute — только фон ===== */
-function updateMuteIcon(){ muteBtn.textContent = amb.muted ? '🔇' : '🔊'; }
-muteBtn.addEventListener('click', ()=>{
-  amb.muted = !amb.muted;
-  if (!amb.muted) amb.play().catch(()=>{});
-  updateMuteIcon();
-});
-
-/* ===== HUD позы ===== */
+/* ===== HUD поза ===== */
 function fmt(n){return Number(n).toFixed(3)}
-setInterval(()=>{
-  const p = camEl.object3D.getWorldPosition(new THREE.Vector3());
-  hud.textContent = `x:${fmt(p.x)}  y:${fmt(p.y)}  z:${fmt(p.z)}`;
-}, 200);
+setInterval(()=>{ const p = camEl.object3D.getWorldPosition(new THREE.Vector3());
+  hud.textContent = `x:${fmt(p.x)}  y:${fmt(p.y)}  z:${fmt(p.z)}`; }, 200);
 
 /* ===== UI размеры ===== */
-const isTouch = AFRAME.utils.device.isMobile() ||
-                navigator.maxTouchPoints > 0 ||
-                window.matchMedia('(pointer: coarse)').matches;
-const JOY_SIZE = 160;
-const RADAR_SIZE = (!isTouch ? 400 : JOY_SIZE);
-const RADAR_MARGIN = 12;
-(function placeRadarAndPopup(){
-  const radar = document.getElementById('radar');
-  const c = document.getElementById('radarCanvas');
-  radar.style.width = RADAR_SIZE+'px';
-  radar.style.height = RADAR_SIZE+'px';
-  c.width = RADAR_SIZE; c.height = RADAR_SIZE;
-  popupWrap.style.width = RADAR_SIZE+'px';
-  popupWrap.style.aspectRatio = '1 / 1';
-  popupWrap.style.top = (12 + RADAR_SIZE + RADAR_MARGIN) + 'px';
-  popupWrap.style.right = '12px';
-  popupWrap.style.left = 'auto';
+const isTouch = AFRAME.utils.device.isMobile() || navigator.maxTouchPoints>0 || window.matchMedia('(pointer: coarse)').matches;
+const JOY_SIZE=160; const RADAR_SIZE = (!isTouch ? 400 : JOY_SIZE); const RADAR_MARGIN=12;
+(function(){
+  const radar=document.getElementById('radar'); const c=document.getElementById('radarCanvas');
+  radar.style.width=RADAR_SIZE+'px'; radar.style.height=RADAR_SIZE+'px'; c.width=RADAR_SIZE; c.height=RADAR_SIZE;
+  popupWrap.style.width=RADAR_SIZE+'px'; popupWrap.style.aspectRatio='1 / 1';
+  popupWrap.style.top=(12+RADAR_SIZE+RADAR_MARGIN)+'px'; popupWrap.style.right='12px'; popupWrap.style.left='auto';
 })();
 
-/* ===== управление: WASD / стики ===== */
-if (!isTouch){
-  camEl.setAttribute('wasd-controls','acceleration: 40');
-} else {
-  camEl.setAttribute('look-controls','touchEnabled:false; mouseEnabled:false');
-}
+/* ===== управление ===== */
+if (!isTouch){ camEl.setAttribute('wasd-controls','acceleration: 40'); }
+else { camEl.setAttribute('look-controls','touchEnabled:false; mouseEnabled:false'); }
 let moveActive=false, rotActive=false, moveVec={x:0,y:0}, rotVec={x:0,y:0};
 function resetSticks(){ moveActive=false; rotActive=false; moveVec.x=moveVec.y=rotVec.x=rotVec.y=0; }
 window.addEventListener('blur', resetSticks);
 if (isTouch){
-  const jmWrap = document.getElementById('joy-move');
-  const jrWrap = document.getElementById('joy-rot');
+  const jmWrap=document.getElementById('joy-move'), jrWrap=document.getElementById('joy-rot');
   jmWrap.style.display='block'; jrWrap.style.display='block';
-  const jm = nipplejs.create({ zone: jmWrap, mode:'static', size:JOY_SIZE,
-    position:{left:'50%', top:'50%'}, color:'white', restOpacity:0.85 });
-  jm.on('move', (_, d)=>{ if(!d||!d.vector) return; moveActive=true; moveVec.x=d.vector.x; moveVec.y=d.vector.y; });
-  jm.on('end', resetSticks);
-  jmWrap.addEventListener('touchcancel', resetSticks);
-  jmWrap.addEventListener('pointercancel', resetSticks);
-
-  const jr = nipplejs.create({ zone: jrWrap, mode:'static', size:JOY_SIZE,
-    position:{left:'50%', top:'50%'}, color:'white', restOpacity:0.85 });
-  jr.on('move', (_, d)=>{ if(!d||!d.vector) return; rotActive=true; rotVec.x=d.vector.x; rotVec.y=d.vector.y; });
-  jr.on('end', resetSticks);
-  jrWrap.addEventListener('touchcancel', resetSticks);
-  jrWrap.addEventListener('pointercancel', resetSticks);
+  const jm=nipplejs.create({ zone:jmWrap, mode:'static', size:JOY_SIZE, position:{left:'50%',top:'50%'}, color:'white', restOpacity:0.85 });
+  jm.on('move',(_,d)=>{ if(!d||!d.vector) return; moveActive=true; moveVec.x=d.vector.x; moveVec.y=d.vector.y; });
+  jm.on('end', resetSticks); jmWrap.addEventListener('touchcancel', resetSticks); jmWrap.addEventListener('pointercancel', resetSticks);
+  const jr=nipplejs.create({ zone:jrWrap, mode:'static', size:JOY_SIZE, position:{left:'50%',top:'50%'}, color:'white', restOpacity:0.85 });
+  jr.on('move',(_,d)=>{ if(!d||!d.vector) return; rotActive=true; rotVec.x=d.vector.x; rotVec.y=d.vector.y; });
+  jr.on('end', resetSticks); jrWrap.addEventListener('touchcancel', resetSticks); jrWrap.addEventListener('pointercancel', resetSticks);
 
   AFRAME.registerComponent('mobile-camera-control',{
     schema:{ moveSpeed:{default:1.9}, rotSpeed:{default:1.9} },
-    tick: function(t, dt){
-      const sec = Math.min(0.05, dt/1000);
-      const lc = camEl.components['look-controls']; if (!lc) return;
+    tick:function(t,dt){
+      const sec=Math.min(0.05, dt/1000); const lc=camEl.components['look-controls']; if(!lc) return;
       if (rotActive){
-        const yawObj = lc.yawObject, pitchObj = lc.pitchObject;
-        yawObj.rotation.y -= rotVec.x * this.data.rotSpeed * sec;
-        pitchObj.rotation.x += rotVec.y * this.data.rotSpeed * sec;
-        const lim = Math.PI/2 - 0.01;
-        pitchObj.rotation.x = Math.max(-lim, Math.min(lim, pitchObj.rotation.x));
+        lc.yawObject.rotation.y -= rotVec.x * this.data.rotSpeed * sec;
+        lc.pitchObject.rotation.x += rotVec.y * this.data.rotSpeed * sec;
+        const lim=Math.PI/2 - 0.01; lc.pitchObject.rotation.x=Math.max(-lim, Math.min(lim, lc.pitchObject.rotation.x));
       }
       if (moveActive){
-        const fwd = new THREE.Vector3(); camEl.object3D.getWorldDirection(fwd);
-        fwd.y = 0; fwd.normalize(); if (fwd.lengthSq()<1e-6) fwd.set(0,0,-1);
-        const right = new THREE.Vector3().crossVectors(fwd,new THREE.Vector3(0,1,0)).normalize();
-        const speed = this.data.moveSpeed * sec;
-        const forward = -moveVec.y;
-        const strafe  = -moveVec.x;
-        rig.object3D.position.x += (right.x * strafe + fwd.x * forward) * speed;
-        rig.object3D.position.z += (right.z * strafe + fwd.z * forward) * speed;
+        const fwd=new THREE.Vector3(); camEl.object3D.getWorldDirection(fwd); fwd.y=0; fwd.normalize(); if(fwd.lengthSq()<1e-6) fwd.set(0,0,-1);
+        const right=new THREE.Vector3().crossVectors(fwd,new THREE.Vector3(0,1,0)).normalize();
+        const speed=this.data.moveSpeed*sec; const forward=-moveVec.y; const strafe=-moveVec.x;
+        rig.object3D.position.x += (right.x*strafe + fwd.x*forward)*speed;
+        rig.object3D.position.z += (right.z*strafe + fwd.z*forward)*speed;
       }
     }
   });
   camEl.setAttribute('mobile-camera-control','moveSpeed:1.9; rotSpeed:1.9');
 }
-
 const moverEl = isTouch ? rig : camEl;
 
 /* ===== helpers ===== */
-function cleanupVideoEl(v){
-  if (!v) return;
-  try{ v.pause(); }catch(_){}
+function findNodeByName(root,name){
+  const t=name.toLowerCase(); let f=null;
+  root.traverse(n=>{ if(f) return; const nm=(n.name||'').toLowerCase(); if(nm===t || nm.startsWith(t)) f=n; });
+  return f;
+}
+function cleanupVideoEl(v){ if(!v) return; try{ v.pause(); }catch(_){}
   try{ v.removeAttribute('src'); v.src=''; }catch(_){}
   try{ v.load(); }catch(_){}
 }
-async function robustPlay(video, {tries=10, step=0.05, wait=260} = {}){
-  let ok = false;
-  for (let i=0; i<tries; i++){
-    try { video.currentTime = Math.max(0, (video.currentTime || 0) + step); } catch(e){}
-    try {
+async function robustPlay(video, {tries=10, step=0.05, wait=260}={}){
+  let ok=false;
+  for(let i=0;i<tries;i++){
+    try{ video.currentTime=Math.max(0,(video.currentTime||0)+step);}catch(_){}
+    try{
       await video.play();
-      const t0 = video.currentTime;
-      await new Promise(r => setTimeout(r, wait));
-      const t1 = video.currentTime;
-      if (t1 > t0 + 0.0005){ ok = true; break; }
-    } catch(e){}
+      const t0=video.currentTime; await new Promise(r=>setTimeout(r,wait)); const t1=video.currentTime;
+      if (t1>t0+0.0005){ ok=true; break; }
+    }catch(_){}
   }
   return ok;
 }
-function findNodeByName(root, name){
-  const target = name.toLowerCase();
-  let found = null;
-  root.traverse(n=>{
-    if (found) return;
-    const nm = (n.name || '').toLowerCase();
-    if (nm === target || nm.startsWith(target)) found = n;
-  });
-  return found;
-}
 
-/* ===== лёгкий «анти-конфликт медиа» только для iOS (1.2s debounce) ===== */
-let iOSLastMediaStart = 0;
+/* ===== iOS анти-конфликт медиа (дебаунс 1.2с) ===== */
+let iOSLastMediaStart=0;
 function iOSCanStartMedia(){
   if (!isiOS()) return true;
-  const now = performance.now();
-  if (now - iOSLastMediaStart < 1200) return false;
-  iOSLastMediaStart = now;
-  return true;
+  const now=performance.now(); if (now - iOSLastMediaStart < 1200) return false; iOSLastMediaStart=now; return true;
 }
 
-/* ===== HUD-видео (pop-up) ===== */
-AFRAME.registerComponent('popup-video-hud',{
-  schema:{ radius:{default:2.0}, loops:{default:1}, hysteresis:{default:0.10},
-           side:{default:'right'}, src:{default:'assets/video/clip1.mp4'} },
+/* ===== кассета: анимация + старт WebAudio (9с) ===== */
+AFRAME.registerComponent('cassette-setup',{
   init(){
-    this.active=false; this.waitExit=false; this.looped=0; this.video = popupHud;
-    this._onEnded = this.onEnded.bind(this);
+    this.ready=false; this.cassette=null; this.t0=performance.now();
+    whenModelReady(root=>{
+      root.traverse(n=>{ const nm=(n.name||'').toLowerCase(); if(!this.cassette && (nm==='cassette'||nm==='кассета'||nm.startsWith('cassette'))) this.cassette=n; });
+      if (!this.cassette) return;
+      this.basePos=this.cassette.position.clone(); this.baseRot=this.cassette.rotation.clone(); this.ready=true;
+
+      const wp=new THREE.Vector3(); this.cassette.getWorldPosition(wp);
+      const s=document.createElement('a-entity');
+      s.setAttribute('position',`${wp.x} ${wp.y} ${wp.z}`);
+      s.setAttribute('geometry','primitive: circle; radius: 0.6; segments: 24');
+      s.setAttribute('material','color:#fff; opacity:0; transparent:true; side:double');
+      s.classList.add('clickable');
+      s.addEventListener('click', async ()=>{
+        unlockMedia();
+        try{
+          await startBackgroundFrom9s();
+          document.getElementById('mute').style.display='block';
+          cassetteHint.style.display='none'; cassetteRing.style.display='none';
+          muteBtn.textContent = ambMuted ? '🔇' : '🔊';
+        }catch(e){ console.log('bg play err:', e); }
+      });
+      this.el.sceneEl.appendChild(s);
+      cassetteRing.style.display='block';
+    });
   },
   tick(){
-    const mPos = moverEl.object3D.getWorldPosition(new THREE.Vector3());
-    const tPos = this.el.object3D.getWorldPosition(new THREE.Vector3());
-    const distXZ = Math.hypot(mPos.x - tPos.x, mPos.z - tPos.z);
-    if (this.waitExit && distXZ > (this.data.radius + this.data.hysteresis)) this.waitExit = false;
-    if (!this.active && !this.waitExit && distXZ <= this.data.radius) this.show();
+    if(!this.ready||!this.cassette) return;
+    const t=(performance.now()-this.t0)/1000;
+    const bobAmp=0.5; const bob=Math.sin(t*Math.PI/2)*bobAmp; this.cassette.position.y=(this.basePos?.y||0)+bob;
+    const yawAmp=THREE.MathUtils.degToRad(30); const yaw=Math.sin(t*0.6)*yawAmp; this.cassette.rotation.y=(this.baseRot?.y||0)+yaw;
+
+    const cam=camEl.getObject3D('camera');
+    if (cam){
+      const v=new THREE.Vector3(); this.cassette.getWorldPosition(v); v.project(cam);
+      const x=(v.x*0.5+0.5)*window.innerWidth; const y=(-v.y*0.5+0.5)*window.innerHeight;
+      if (v.z>1) { cassetteRing.style.display='none'; }
+      else { if (cassetteHint.style.display!=='none') cassetteRing.style.display='block';
+        cassetteRing.style.transform=`translate(${Math.round(x-28)}px, ${Math.round(y-28)}px)`; }
+    }
+  }
+});
+document.querySelector('a-scene').setAttribute('cassette-setup','');
+
+/* ===== POPUP HUD (видео с аудио; не трогаем фон) ===== */
+AFRAME.registerComponent('popup-video-hud',{
+  schema:{ radius:{default:2.0}, loops:{default:1}, hysteresis:{default:0.10}, side:{default:'right'}, src:{default:'assets/video/clip1.mp4'} },
+  init(){ this.active=false; this.waitExit=false; this.looped=0; this.video=popupHud; this._onEnded=this.onEnded.bind(this); },
+  tick(){
+    const m=moverEl.object3D.getWorldPosition(new THREE.Vector3());
+    const t=this.el.object3D.getWorldPosition(new THREE.Vector3());
+    const d=Math.hypot(m.x-t.x, m.z-t.z);
+    if (this.waitExit && d>(this.data.radius+this.data.hysteresis)) this.waitExit=false;
+    if (!this.active && !this.waitExit && d<=this.data.radius) this.show();
   },
   async show(){
     if (isTouch && !userMediaUnlocked){ const retry=()=>{ window.removeEventListener('touchstart', retry); this.show(); }; window.addEventListener('touchstart', retry, {once:true}); return; }
-    if (!iOSCanStartMedia()) return; // iOS: короткая защита
-
-    this.cleanup();
-    this.active = true; this.looped = 0;
-    if (this.data.side === 'left'){ popupWrap.style.left='12px'; popupWrap.style.right='auto'; }
-    else { popupWrap.style.right='12px'; popupWrap.style.left='auto'; }
+    if (!iOSCanStartMedia()) return;
+    this.cleanup(); this.active=true; this.looped=0;
+    if (this.data.side==='left'){ popupWrap.style.left='12px'; popupWrap.style.right='auto'; } else { popupWrap.style.right='12px'; popupWrap.style.left='auto'; }
     popupWrap.style.display='block';
-
     try{
       this.video.removeEventListener('ended', this._onEnded);
-      this.video.src = this.data.src;
-      this.video.loop = false;
-      this.video.muted = false;
-      this.video.load();
-      this.video.currentTime = 0.05;
+      this.video.src=this.data.src; this.video.loop=false; this.video.muted=false; this.video.load(); this.video.currentTime=0.05;
       this.video.addEventListener('ended', this._onEnded);
-      const ok = await robustPlay(this.video);
-      if (!ok){ this.hide(); }
+      const ok=await robustPlay(this.video); if(!ok){ this.hide(); }
     }catch(_){ this.hide(); }
   },
   onEnded(){
     this.looped++;
-    if (this.looped < this.data.loops){
-      try{ this.video.currentTime = 0.05; }catch(_){}
+    if (this.looped < this.data.loops){ try{ this.video.currentTime=0.05; }catch(_){}
       robustPlay(this.video);
-    } else {
-      this.hide(); this.waitExit = true;
-    }
+    } else { this.hide(); this.waitExit=true; }
   },
   hide(){ try{ this.video.pause(); }catch(_){}
     popupWrap.style.display='none'; this.active=false; },
@@ -377,78 +366,68 @@ AFRAME.registerComponent('popup-video-hud',{
 
 /* ===== хвост ===== */
 AFRAME.registerComponent('crumb-trail',{
-  schema:{ step:{default:0.004}, radius:{default:0.007}, color:{default:'#00e0ff'}, fadeSeconds:{default:15}, max:{default: isTouch ? 15000 : 30000}, y:{default:0.03} },
+  schema:{ step:{default:0.004}, radius:{default:0.007}, color:{default:'#00e0ff'}, fadeSeconds:{default:15}, max:{default:isTouch?15000:30000}, y:{default:0.03} },
   init(){ this.last=null; this.pool=[]; this.active=[]; this.tmp=new THREE.Vector3(); this.forceReset=false;
-    document.addEventListener('visibilitychange', ()=>{ if (!document.hidden) this.forceReset = true; }); },
+    document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) this.forceReset=true; }); },
   tick(){
     if (this.forceReset){ this.last=null; this.forceReset=false; }
-    const pos = this.el.object3D.getWorldPosition(this.tmp);
-    const here = new THREE.Vector3(pos.x, this.data.y, pos.z);
-    if (!this.last){ this.last = here.clone(); this.drop(here); return; }
+    const pos=this.el.object3D.getWorldPosition(this.tmp); const here=new THREE.Vector3(pos.x, this.data.y, pos.z);
+    if (!this.last){ this.last=here.clone(); this.drop(here); return; }
     if (here.distanceTo(this.last) >= this.data.step){ this.last.copy(here); this.drop(here); }
   },
-  makeDot(){
-    const e = document.createElement('a-entity'); e.classList.add('dot');
-    e.setAttribute('geometry', `primitive: sphere; radius: ${this.data.radius}`);
-    e.setAttribute('material', `color: ${this.data.color}; shader: flat; opacity: 0.9; transparent: true`);
-    this.el.sceneEl.appendChild(e); return e;
-  },
+  makeDot(){ const e=document.createElement('a-entity'); e.classList.add('dot');
+    e.setAttribute('geometry',`primitive: sphere; radius: ${this.data.radius}`);
+    e.setAttribute('material',`color: ${this.data.color}; shader: flat; opacity: 0.9; transparent: true`);
+    this.el.sceneEl.appendChild(e); return e; },
   drop(p){
-    const e = this.pool.pop() || this.makeDot();
-    e.object3D.position.set(p.x, this.data.y, p.z); e.object3D.visible = true; this.active.push(e);
-    const life = this.data.fadeSeconds*1000;
-    setTimeout(()=>{ if (!e.parentNode) return;
+    const e=this.pool.pop()||this.makeDot(); e.object3D.position.set(p.x, this.data.y, p.z); e.object3D.visible=true; this.active.push(e);
+    const life=this.data.fadeSeconds*1000;
+    setTimeout(()=>{ if(!e.parentNode) return;
       e.setAttribute('animation__fade','property: material.opacity; to:0; dur:600; startEvents:startfade;');
       e.emit('startfade'); setTimeout(()=>{ e.object3D.visible=false; e.removeAttribute('animation__fade');
         const i=this.active.indexOf(e); if(i>=0) this.active.splice(i,1); this.pool.push(e); },620);
     }, life);
-    if (this.active.length > this.data.max){ const old=this.active.shift(); if(old){ old.object3D.visible=false; this.pool.push(old); } }
+    if (this.active.length>this.data.max){ const old=this.active.shift(); if(old){ old.object3D.visible=false; this.pool.push(old); } }
   }
 });
-(isTouch ? rig : camEl).setAttribute('crumb-trail','step:0.004; radius:0.007; color:#00e0ff; fadeSeconds:15; max:30000; y:0.03');
+(isTouch?rig:camEl).setAttribute('crumb-trail','step:0.004; radius:0.007; color:#00e0ff; fadeSeconds:15; max:30000; y:0.03');
 
-/* ===== reveal существующего узла по имени (gyros) + позиционный звук gyros ===== */
+/* ===== reveal узла (gyros) + звук gyros (как раньше) ===== */
 AFRAME.registerComponent('reveal-node-rot-fade',{
-  schema:{ targetName:{default:''}, radius:{default:2.0}, hysteresis:{default:0.20}, spinDegPerSec:{default:60}, lifeMs:{default:15000}, fadeMs:{default:800}, soundId:{default:''} },
+  schema:{ targetName:{default:''}, radius:{default:2.0}, hysteresis:{default:0.20}, spinDegPerSec:{default:60}, lifeMs:{default:15000}, fadeMs:{default:800}, soundId:{default:'gyrosAudio'} },
   init(){ this.armed=true; this.active=false; this.targetNode=null; this.spawnTime=0; this.fading=false; this.fadeStart=0; this.soundEnt=null;
     whenModelReady(root=>{
-      this.targetNode = findNodeByName(root, this.data.targetName);
-      if (this.targetNode){
-        this.targetNode.visible=false; this.targetNode.scale.setScalar(0);
-        if (this.data.soundId){
-          const wp = new THREE.Vector3(); this.targetNode.getWorldPosition(wp);
-          const s = document.createElement('a-entity');
-          s.setAttribute('position', `${wp.x} ${wp.y} ${wp.z}`);
-          s.setAttribute('sound', `src:#${this.data.soundId}; positional:true; refDistance:2; maxDistance:12; rolloffFactor:1`);
-          streetEntity.sceneEl.appendChild(s);
-          this.soundEnt = s;
-        }
-      }
+      this.targetNode=findNodeByName(root,this.data.targetName);
+      if(!this.targetNode){ console.warn('Gyros node not found'); return; }
+      this.targetNode.visible=false; this.targetNode.scale.setScalar(0);
+      const wp=new THREE.Vector3(); this.targetNode.getWorldPosition(wp);
+      const s=document.createElement('a-entity');
+      s.setAttribute('position',`${wp.x} ${wp.y} ${wp.z}`);
+      s.setAttribute('sound',`src:#${this.data.soundId}; positional:true; refDistance:2; maxDistance:12; rolloffFactor:1`);
+      streetEntity.sceneEl.appendChild(s); this.soundEnt=s;
     });
   },
-  tick(time, dt){
-    if (!this.targetNode) return;
-    const now = this.el.sceneEl.time;
-    const mPos = moverEl.object3D.getWorldPosition(new THREE.Vector3());
-    const tPos = this.el.object3D.getWorldPosition(new THREE.Vector3());
-    const distXZ = Math.hypot(mPos.x - tPos.x, mPos.z - tPos.z);
+  tick(time,dt){
+    if(!this.targetNode) return;
+    const now=this.el.sceneEl.time;
+    const m=moverEl.object3D.getWorldPosition(new THREE.Vector3());
+    const t=this.el.object3D.getWorldPosition(new THREE.Vector3());
+    const d=Math.hypot(m.x-t.x, m.z-t.z);
 
-    if (this.armed && distXZ <= this.data.radius && !this.active){
-      if (!iOSCanStartMedia()) return; // iOS: короткая защита
+    if (this.armed && d<=this.data.radius && !this.active){
+      if (!iOSCanStartMedia()) return;
       this.active=true; this.fading=false; this.fadeStart=0; this.spawnTime=now;
       this.targetNode.visible=true; this.targetNode.scale.setScalar(1);
       try{ this.soundEnt?.components.sound.stopSound(); }catch(_){}
       try{ this.soundEnt?.components.sound.playSound(); }catch(_){}
-    } else if (!this.armed && distXZ > (this.data.radius + this.data.hysteresis) && !this.active){
-      this.armed=true;
-    }
+    } else if (!this.armed && d>(this.data.radius+this.data.hysteresis) && !this.active){ this.armed=true; }
+
     if (this.active){
-      const sec = Math.min(0.05, dt/1000);
-      this.targetNode.rotation.y += (this.data.spinDegPerSec * Math.PI/180) * sec;
+      const sec=Math.min(0.05, dt/1000);
+      this.targetNode.rotation.y += (this.data.spinDegPerSec*Math.PI/180)*sec;
       if (!this.fading && (now - this.spawnTime) >= this.data.lifeMs){ this.fading=true; this.fadeStart=now; }
       if (this.fading){
-        const t = (now - this.fadeStart)/this.data.fadeMs;
-        const k = Math.min(1, Math.max(0,t)); const ease = k*k*(3-2*k); const s = 1-ease;
+        const t=(now - this.fadeStart)/this.data.fadeMs; const k=Math.min(1,Math.max(0,t)); const ease=k*k*(3-2*k); const s=1-ease;
         this.targetNode.scale.setScalar(Math.max(0,s));
         if (k>=1){ this.targetNode.visible=false; this.active=false; this.fading=false; }
       }
@@ -456,185 +435,166 @@ AFRAME.registerComponent('reveal-node-rot-fade',{
   }
 });
 
-/* ===== видео-текстура на плейне (sunset2/3/waves): muted видео + отдельный <audio>, флип, без тонмапа ===== */
-AFRAME.registerComponent('plane-video-once',{
-  schema:{ nodeName:{default:''}, videoSrc:{default:''}, radius:{default:2.5}, hysteresis:{default:0.10} },
-  init(){ this.node=null; this.ready=false; this.playing=false; this.waitExit=false; this.video=null; this.audioEl=null; this.tex=null;
+/* ===== attention: собака (логируем узлы, звук позиционный) ===== */
+AFRAME.registerComponent('attention-dog',{
+  schema:{ radius:{default:1.0}, hysteresis:{default:0.20}, lifeMs:{default:6000}, fadeMs:{default:600} },
+  init(){ this.armed=true; this.playing=false; this.dogNode=null; this.soundEl=null; this.spawnTime=0; this.fading=false; this.fadeStart=0;
     whenModelReady(root=>{
-      this.node = findNodeByName(root, this.data.nodeName); if(!this.node) return;
-      this.node.visible=false; this.node.scale.setScalar(0); this.ready=true;
+      const att=findNodeByName(root,'attention'); if(!att){ console.warn('attention node not found'); }
+      this.dogNode=findNodeByName(root,'dog'); if(!this.dogNode){ console.warn('dog node not found'); return; }
+      this.dogNode.visible=false; this.dogNode.scale.setScalar(0);
+      const wp=new THREE.Vector3(); this.dogNode.getWorldPosition(wp);
+      const s=document.createElement('a-entity');
+      s.setAttribute('position',`${wp.x} ${wp.y} ${wp.z}`);
+      s.setAttribute('sound','src:#dogAudio; positional:true; refDistance:2; maxDistance:12; rolloffFactor:1');
+      this.soundEl=s; streetEntity.sceneEl.appendChild(s);
     });
   },
   tick(){
-    if (!this.ready || !this.node) return;
-    const mPos = moverEl.object3D.getWorldPosition(new THREE.Vector3());
-    const tPos = this.node.getWorldPosition(new THREE.Vector3());
-    const distXZ = Math.hypot(mPos.x - tPos.x, mPos.z - tPos.z);
-    if (!this.playing && !this.waitExit && distXZ <= this.data.radius){ this.startVideo(); }
-    else if (this.waitExit && distXZ > (this.data.radius + this.data.hysteresis)){ this.waitExit=false; }
+    if(!this.dogNode) return;
+    const m=moverEl.object3D.getWorldPosition(new THREE.Vector3());
+    const t=this.el.object3D.getWorldPosition(new THREE.Vector3());
+    const d=Math.hypot(m.x-t.x, m.z-t.z);
+
+    if (this.armed && d<=this.data.radius && !this.playing){ this.trigger(); this.armed=false; }
+    else if (!this.armed && d>(this.data.radius+this.data.hysteresis) && !this.playing){ this.armed=true; }
+
+    if (this.playing){
+      const now=this.el.sceneEl.time;
+      if (!this.fading && (now - this.spawnTime) >= this.data.lifeMs){ this.fading=true; this.fadeStart=now; }
+      if (this.fading){
+        const t=(now - this.fadeStart)/this.data.fadeMs; const k=Math.min(1,Math.max(0,t)); const s=1-(k*k*(3-2*k));
+        this.dogNode.scale.setScalar(Math.max(0,s));
+        if (k>=1){ this.dogNode.visible=false; this.playing=false; this.fading=false; }
+      }
+    }
+  },
+  trigger(){
+    this.playing=true; this.spawnTime=this.el.sceneEl.time; this.fading=false;
+    this.dogNode.visible=true; this.dogNode.scale.setScalar(1);
+    try{ this.soundEl?.components.sound.stopSound(); }catch(_){}
+    try{ this.soundEl?.components.sound.playSound(); }catch(_){}
+  }
+});
+
+/* ===== Плейны-видео: десктоп/Android — как раньше (картинка+звук); iOS — один общий muted-видео, без звука ===== */
+AFRAME.registerComponent('plane-video-once',{
+  schema:{ nodeName:{default:''}, videoSrc:{default:''}, radius:{default:2.5}, hysteresis:{default:0.10} },
+  init(){
+    this.node=null; this.ready=false; this.playing=false; this.waitExit=false;
+    this.video=null; this.tex=null; this.materials=[]; this.audioEl=null;
+    whenModelReady(root=>{
+      this.node=findNodeByName(root, this.data.nodeName); if(!this.node) return;
+      // только скрываем — без правки масштаба
+      this.node.visible=false; this.ready=true;
+    });
+  },
+  tick(){
+    if(!this.ready||!this.node) return;
+    const m=moverEl.object3D.getWorldPosition(new THREE.Vector3());
+    const t=this.node.getWorldPosition(new THREE.Vector3());
+    const d=Math.hypot(m.x-t.x, m.z-t.z);
+    if(!this.playing && !this.waitExit && d<=this.data.radius){ this.startVideo(); }
+    else if (this.waitExit && d>(this.data.radius+this.data.hysteresis)){ this.waitExit=false; }
   },
   async startVideo(){
     if (isTouch && !userMediaUnlocked){ const retry=()=>{ window.removeEventListener('touchstart', retry); this.startVideo(); }; window.addEventListener('touchstart', retry, {once:true}); return; }
-    if (!iOSCanStartMedia()) return; // iOS: короткая защита
+    if (isiOS() && !iOSCanStartMedia()) return;
 
-    this.playing = true;
+    this.playing=true; this.node.visible=true;
 
-    // 1) VIDEO texture (muted)
-    this.video = document.createElement('video');
-    this.video.src = this.data.videoSrc;
-    this.video.playsInline = true; this.video.preload='metadata'; this.video.crossOrigin='anonymous';
-    this.video.loop=false; this.video.muted=true; // важное: muted — для устойчивости iOS
-    this.tex = new THREE.VideoTexture(this.video);
-    if (THREE.SRGBColorSpace) this.tex.colorSpace = THREE.SRGBColorSpace;
-    this.tex.needsUpdate = true;
-    this.tex.minFilter=THREE.LinearFilter; this.tex.magFilter=THREE.LinearFilter;
-
-    const basic = new THREE.MeshBasicMaterial({ map:this.tex, side:THREE.DoubleSide });
-    basic.toneMapped = false;
-
-    const meshes=[]; this.node.traverse(n=>{ if(n.isMesh) meshes.push(n); });
-    meshes.forEach(n=>{
-      n.material = basic;
-      if (n.material.map){
-        n.material.map.repeat.x = -1; // флип по горизонтали
-        n.material.map.offset.x = 1;
-        n.material.map.needsUpdate = true;
-      }
-    });
-
-    // 2) AUDIO (раздельно)
-    this.audioEl = document.createElement('audio');
-    this.audioEl.src = this.data.videoSrc; // тот же файл, только звук
-    this.audioEl.preload = 'metadata';
-    this.audioEl.crossOrigin = 'anonymous';
-    this.audioEl.loop = false;
-
-    this.node.visible=true; this.node.scale.setScalar(1);
-
-    const finish = ()=>{
-      this.node.visible=false; this.node.scale.setScalar(0);
-      try{ this.video.pause(); }catch(_){}
-      try{ this.audioEl.pause(); }catch(_){}
-      if (this.tex){ this.tex.dispose(); this.tex=null; }
-      cleanupVideoEl(this.video);
-      try{ this.audioEl.removeAttribute('src'); this.audioEl.src=''; this.audioEl.load(); }catch(_){}
-      this.playing=false; this.waitExit=true;
+    const makeMaterial = (tex)=>{
+      const m = new THREE.MeshBasicMaterial({ map:tex, side:THREE.DoubleSide }); m.toneMapped=false;
+      return m;
     };
 
-    this.video.addEventListener('ended', finish, {once:true});
-    this.audioEl.addEventListener('ended', ()=>{ /* если аудио закончилось раньше/позже — всё равно закрываем по видео */ }, {once:true});
+    if (isiOS()){
+      // iOS: общий muted video → VideoTexture, без звука
+      this.video = planeVideoMobile; // общий
+      try{ this.video.pause(); }catch(_){}
+      this.video.src = this.data.videoSrc; this.video.load(); this.video.currentTime=0.05;
+      const ok = await robustPlay(this.video);
+      if (!ok){ this.finish(); return; }
 
-    // старт
-    try{ this.video.currentTime = 0.05; }catch(_){}
-    const vOk = await robustPlay(this.video);
-    const aOk = await (async()=>{ try{ await this.audioEl.play(); return true; }catch(_){ return false; } })();
+      this.tex = new THREE.VideoTexture(this.video);
+      if (THREE.SRGBColorSpace) this.tex.colorSpace = THREE.SRGBColorSpace;
+      this.tex.minFilter=THREE.LinearFilter; this.tex.magFilter=THREE.LinearFilter; this.tex.needsUpdate=true;
 
-    if (!vOk){ finish(); return; }
-    // если звук не запустился — продолжаем молча, но не падаем
-
-    // на всякий случай: если видео «застыло», закроем через 60с
-    setTimeout(()=>{ if (this.playing) finish(); }, 60000);
-  }
-});
-
-/* ===== кассета: анимация + HUD-кольцо + запуск музыки (с 9с) ===== */
-AFRAME.registerComponent('cassette-setup',{
-  schema:{},
-  init(){
-    this.ready=false; this.cassette=null; this.t0=performance.now();
-    whenModelReady(root=>{
-      root.traverse(n=>{
-        const nm=(n.name||'').toLowerCase();
-        if(!this.cassette && (nm==='cassette'||nm==='кассета'||nm.startsWith('cassette'))) this.cassette=n;
+      const mat = makeMaterial(this.tex);
+      const meshes=[]; this.node.traverse(n=>{ if(n.isMesh) meshes.push(n); });
+      meshes.forEach(n=>{
+        n.material=mat;
+        if (n.material.map){
+          n.material.map.repeat.x=-1; n.material.map.offset.x=1; n.material.map.needsUpdate=true; // горизонтальный флип
+        }
       });
-      if (!this.cassette) return;
-      this.basePos = this.cassette.position.clone();
-      this.baseRot = this.cassette.rotation.clone();
-      this.ready = true;
 
-      const wp = new THREE.Vector3(); this.cassette.getWorldPosition(wp);
-      const s = document.createElement('a-entity');
-      s.setAttribute('position', `${wp.x} ${wp.y} ${wp.z}`);
-      s.setAttribute('geometry','primitive: circle; radius: 0.6; segments: 24');
-      s.setAttribute('material','color:#fff; opacity:0; transparent:true; side:double');
-      s.classList.add('clickable');
-      s.addEventListener('click', async ()=>{
-        unlockMedia();
-        try{
-          amb.currentTime = 9;
-          await amb.play(); amb.muted=false;
-          document.getElementById('mute').style.display='block';
-          cassetteHint.style.display='none';
-          updateMuteIcon();
-          cassetteRing.style.display='none';
-        }catch(e){ console.log('Audio play blocked:', e); }
+      // авто-закрытие по окончанию (если видео общее и его переключат — закроем через 60с)
+      setTimeout(()=>{ if (this.playing) this.finish(); }, 60000);
+      // заметка: звука на iOS у плейнов нет — намеренно, чтобы не падал WebKit
+    } else {
+      // Десктоп/Android: как раньше — своё видео + свой звук из файла
+      this.video = document.createElement('video');
+      this.video.src=this.data.videoSrc; this.video.playsInline=true; this.video.preload='metadata'; this.video.crossOrigin='anonymous';
+      this.video.loop=false; this.video.muted=false; // звук включён
+      this.tex = new THREE.VideoTexture(this.video);
+      if (THREE.SRGBColorSpace) this.tex.colorSpace = THREE.SRGBColorSpace;
+      this.tex.minFilter=THREE.LinearFilter; this.tex.magFilter=THREE.LinearFilter; this.tex.needsUpdate=true;
+      const mat = makeMaterial(this.tex);
+
+      const meshes=[]; this.node.traverse(n=>{ if(n.isMesh) meshes.push(n); });
+      meshes.forEach(n=>{
+        n.material=mat;
+        if (n.material.map){
+          n.material.map.repeat.x=-1; n.material.map.offset.x=1; n.material.map.needsUpdate=true; // флип
+        }
       });
-      this.el.sceneEl.appendChild(s);
-      cassetteRing.style.display='block';
-    });
-  },
-  tick(){
-    if (!this.ready || !this.cassette) return;
-    const t = (performance.now() - this.t0)/1000;
-    const bobAmp = 0.5; const bob = Math.sin(t * Math.PI/2) * bobAmp;
-    this.cassette.position.y = (this.basePos?.y || 0) + bob;
-    const yawAmp = THREE.MathUtils.degToRad(30); const yaw = Math.sin(t * 0.6) * yawAmp;
-    this.cassette.rotation.y = (this.baseRot?.y || 0) + yaw;
 
-    const cam = camEl.getObject3D('camera');
-    if (cam){
-      const v = new THREE.Vector3();
-      this.cassette.getWorldPosition(v);
-      v.project(cam);
-      const x = (v.x * 0.5 + 0.5) * window.innerWidth;
-      const y = (-v.y * 0.5 + 0.5) * window.innerHeight;
-      if (v.z > 1) { cassetteRing.style.display='none'; }
-      else {
-        if (cassetteHint.style.display !== 'none') cassetteRing.style.display='block';
-        cassetteRing.style.transform = `translate(${Math.round(x-28)}px, ${Math.round(y-28)}px)`;
-      }
+      this.video.addEventListener('ended', ()=>this.finish(), {once:true});
+      try{ this.video.currentTime=0.05; }catch(_){}
+      const ok=await robustPlay(this.video);
+      if (!ok){ this.finish(); return; }
     }
+  },
+  finish(){
+    try{ this.video?.pause(); }catch(_){}
+    if (this.tex){ this.tex.dispose(); this.tex=null; }
+    cleanupVideoEl(this.video);
+    this.node.visible=false;
+    this.playing=false; this.waitExit=true;
   }
 });
-document.querySelector('a-scene').setAttribute('cassette-setup','');
 
-/* ===== радар ===== */
+/* ===== Радар (как раньше) ===== */
 (function(){
-  const c = document.getElementById('radarCanvas');
-  const ctx = c.getContext('2d');
-  const cx = c.width/2, cy = c.height/2, R = Math.min(cx, cy) - 2;
-  const RADAR_RANGE = 25;
+  const c=document.getElementById('radarCanvas'); const ctx=c.getContext('2d');
+  const cx=c.width/2, cy=c.height/2, R=Math.min(cx,cy)-2, RADAR_RANGE=25;
   function ring(r,a){ ctx.strokeStyle=`rgba(255,255,255,${a})`; ctx.beginPath(); ctx.arc(cx,cy,r,0,Math.PI*2); ctx.stroke(); }
-
   setInterval(()=>{
-    const cam = camEl.object3D, mover = (isTouch ? rig : camEl).object3D; if (!cam || !mover) return;
-    const fwd = new THREE.Vector3(); cam.getWorldDirection(fwd); fwd.y=0; fwd.normalize(); if(fwd.lengthSq()<1e-6) fwd.set(0,0,-1);
-    const right = new THREE.Vector3().crossVectors(fwd,new THREE.Vector3(0,1,0)).normalize();
-    const mPos = mover.getWorldPosition(new THREE.Vector3());
+    const cam=camEl.object3D, mover=(isTouch?rig:camEl).object3D; if(!cam||!mover) return;
+    const fwd=new THREE.Vector3(); cam.getWorldDirection(fwd); fwd.y=0; fwd.normalize(); if(fwd.lengthSq()<1e-6) fwd.set(0,0,-1);
+    const right=new THREE.Vector3().crossVectors(fwd,new THREE.Vector3(0,1,0)).normalize();
+    const mPos=mover.getWorldPosition(new THREE.Vector3());
 
-    const popupTrigs = Array.from(document.querySelectorAll('.trigger-popup'));
-    const revealTrigs= Array.from(document.querySelectorAll('.trigger-reveal'));
-    const planeTrigs = Array.from(document.querySelectorAll('.trigger-plane'));
+    const popupTrigs=[...document.querySelectorAll('.trigger-popup')];
+    const revealTrigs=[...document.querySelectorAll('.trigger-reveal')];
+    const planeTrigs=[...document.querySelectorAll('.trigger-plane')];
 
     ctx.clearRect(0,0,c.width,c.height);
     ctx.lineWidth=1; ring(R,0.25); ring(R*0.66,0.18); ring(R*0.33,0.14);
-    ctx.fillStyle='#fff'; ctx.beginPath(); ctx.arc(cx,cy,Math.max(2, R*0.02), 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle='#fff'; ctx.beginPath(); ctx.arc(cx,cy,Math.max(2,R*0.02),0,Math.PI*2); ctx.fill();
 
-    const worldNorth = new THREE.Vector3(0,0,-1);
-    const nx = worldNorth.dot(right), nz = worldNorth.dot(fwd);
-    const rN = R - 8, xN = cx - nx * rN, yN = cy + nz * rN;
-    ctx.fillStyle='rgba(255,255,255,0.95)';
-    ctx.font = Math.max(12, Math.floor(R*0.12)) + 'px system-ui, -apple-system, Segoe UI, Roboto, Arial';
-    ctx.textAlign='center'; ctx.textBaseline='middle';
-    ctx.fillText('N', xN, yN);
+    const worldNorth=new THREE.Vector3(0,0,-1);
+    const nx=worldNorth.dot(right), nz=worldNorth.dot(fwd);
+    const rN=R-8, xN=cx - nx*rN, yN=cy + nz*rN;
+    ctx.fillStyle='rgba(255,255,255,0.95)'; ctx.font=Math.max(12,Math.floor(R*0.12))+'px system-ui,-apple-system,Segoe UI,Roboto,Arial';
+    ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText('N', xN, yN);
 
-    const chevrLen = Math.max(12, R*0.24), chevrYOffset = Math.max(10, R*0.10);
-    ctx.strokeStyle='rgba(255,255,255,0.9)'; ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(cx - chevrLen*0.5, cy - chevrYOffset + chevrLen*0.5);
-    ctx.lineTo(cx,                  cy - chevrYOffset);
-    ctx.lineTo(cx + chevrLen*0.5, cy - chevrYOffset + chevrLen*0.5);
-    ctx.stroke();
+    const chevrLen=Math.max(12,R*0.24), chevrYOffset=Math.max(10,R*0.10);
+    ctx.strokeStyle='rgba(255,255,255,0.9)'; ctx.lineWidth=2;
+    ctx.beginPath(); ctx.moveTo(cx-chevrLen*0.5, cy - chevrYOffset + chevrLen*0.5);
+    ctx.lineTo(cx,                 cy - chevrYOffset);
+    ctx.lineTo(cx+chevrLen*0.5, cy - chevrYOffset + chevrLen*0.5); ctx.stroke();
 
     const s=(R-6)/RADAR_RANGE;
     function draw(list,color){
@@ -642,8 +602,7 @@ document.querySelector('a-scene').setAttribute('cassette-setup','');
       list.forEach(el=>{
         const tp=el.object3D.getWorldPosition(new THREE.Vector3());
         const dx=tp.x-mPos.x, dz=tp.z-mPos.z;
-        const lx=dx*right.x+dz*right.z;  // влево = влево
-        const lz=dx*fwd.x  +dz*fwd.z;    // вперёд = вверх
+        const lx=dx*right.x+dz*right.z; const lz=dx*fwd.x+dz*fwd.z;
         const d=Math.hypot(lx,lz); if(d>RADAR_RANGE) return;
         ctx.beginPath(); ctx.arc(cx-lx*s, cy+lz*s, Math.max(3,R*0.03), 0, Math.PI*2); ctx.fill();
       });
@@ -654,60 +613,52 @@ document.querySelector('a-scene').setAttribute('cassette-setup','');
   },80);
 })();
 
-/* ===== дирижёр: триггеры, радиусы (pharma=2.5м), баундинг-бокс ===== */
+/* ===== Дирижёр: триггеры, радиусы (pharma=2.5м), баундинг игрока ===== */
 AFRAME.registerComponent('trigger-director',{
   init(){
     whenModelReady(root=>{
-      const scene = this.el.sceneEl;
+      const scene=this.el.sceneEl;
 
-      // bounding box игрока = сцена + 3м
-      const box = new THREE.Box3().setFromObject(root);
-      box.min.x -= 3; box.min.z -= 3; box.max.x += 3; box.max.z += 3;
-      const bounds = {minX:box.min.x, maxX:box.max.x, minZ:box.min.z, maxZ:box.max.z};
-      AFRAME.registerComponent('clamp-to-bounds',{ schema:{}, tick: function(){
-        const obj = moverEl.object3D.position;
-        obj.x = Math.max(bounds.minX, Math.min(bounds.maxX, obj.x));
-        obj.z = Math.max(bounds.minZ, Math.min(bounds.maxZ, obj.z));
+      // bounding: сцена + 3м
+      const box=new THREE.Box3().setFromObject(root);
+      box.min.x-=3; box.min.z-=3; box.max.x+=3; box.max.z+=3;
+      const bounds={minX:box.min.x, maxX:box.max.x, minZ:box.min.z, maxZ:box.max.z};
+      AFRAME.registerComponent('clamp-to-bounds',{tick:function(){
+        const p=moverEl.object3D.position; p.x=Math.max(bounds.minX, Math.min(bounds.maxX, p.x)); p.z=Math.max(bounds.minZ, Math.min(bounds.maxZ, p.z));
       }});
       document.querySelector('a-scene').setAttribute('clamp-to-bounds','');
 
-      const makeAtNode = (node, klass, comp, value) => {
+      const makeAtNode=(node, klass, comp, value)=>{
         const wp=new THREE.Vector3(); node.getWorldPosition(wp);
         const e=document.createElement('a-entity'); e.classList.add(klass);
-        e.setAttribute('position', `${wp.x} ${wp.y} ${wp.z}`);
-        if (comp) e.setAttribute(comp, value);
-        scene.appendChild(e); return e;
+        e.setAttribute('position',`${wp.x} ${wp.y} ${wp.z}`); if(comp) e.setAttribute(comp, value); scene.appendChild(e); return e;
       };
 
-      // стартовое скрытие
-      ['dog','gyros','sunset2','sunset3','waves'].forEach(name=>{
-        const n = findNodeByName(root,name); if(n){ n.visible=false; n.scale.setScalar(0); }
-      });
+      // скрыть по сценарию
+      ['dog','gyros','sunset2','sunset3','waves'].forEach(nm=>{ const n=findNodeByName(root,nm); if(n){ n.visible=false; } });
 
-      // POPUP HUD (petals/tree = 3.0м; pharma = 2.5м)
+      // POPUP HUD (cat, pharma, petals, tree)
       const defLoops=1;
-      const cat     = findNodeByName(root,'cat');     if (cat)    makeAtNode(cat,    'trigger-popup','popup-video-hud', 'radius:1.5; loops:'+defLoops+'; hysteresis:0.2; side:right; src:assets/video/clip1.mp4');
-      const pharma  = findNodeByName(root,'pharma');  if (pharma) makeAtNode(pharma, 'trigger-popup','popup-video-hud', 'radius:2.5; loops:'+defLoops+'; hysteresis:0.2; side:left;  src:assets/video/pharma.mp4'); <!-- ← 2.5м -->
-      const petals  = findNodeByName(root,'petals');  if (petals) makeAtNode(petals, 'trigger-popup','popup-video-hud', 'radius:3.0; loops:'+defLoops+'; hysteresis:0.2; side:right; src:assets/video/petals.mp4');
-      const tree    = findNodeByName(root,'tree');    if (tree)   makeAtNode(tree,   'trigger-popup','popup-video-hud', 'radius:3.0; loops:'+defLoops+'; hysteresis:0.2; side:left;  src:assets/video/tree.mp4');
+      const cat=findNodeByName(root,'cat');     if(cat)    makeAtNode(cat,   'trigger-popup','popup-video-hud','radius:1.5; loops:'+defLoops+'; hysteresis:0.2; side:right; src:assets/video/clip1.mp4');
+      const pharma=findNodeByName(root,'pharma');if(pharma) makeAtNode(pharma,'trigger-popup','popup-video-hud','radius:2.5; loops:'+defLoops+'; hysteresis:0.2; side:left;  src:assets/video/pharma.mp4'); /* 2.5м */
+      const petals=findNodeByName(root,'petals');if(petals) makeAtNode(petals,'trigger-popup','popup-video-hud','radius:3.0; loops:'+defLoops+'; hysteresis:0.2; side:right; src:assets/video/petals.mp4');
+      const tree=findNodeByName(root,'tree');    if(tree)   makeAtNode(tree,  'trigger-popup','popup-video-hud','radius:3.0; loops:'+defLoops+'; hysteresis:0.2; side:left;  src:assets/video/tree.mp4');
 
-      // GYROS reveal у "taverna" + позиционное аудио gyros
-      const taverna = findNodeByName(root,'taverna');
-      if (taverna) makeAtNode(
-        taverna,
-        'trigger-reveal',
-        'reveal-node-rot-fade',
-        'targetName:gyros; radius:2.0; hysteresis:0.2; spinDegPerSec:60; lifeMs:15000; fadeMs:800; soundId:gyrosAudio'
-      );
+      // GYROS (taverna)
+      const taverna=findNodeByName(root,'taverna');
+      if (taverna) makeAtNode(taverna,'trigger-reveal','reveal-node-rot-fade','targetName:gyros; radius:2.0; hysteresis:0.2; spinDegPerSec:60; lifeMs:15000; fadeMs:800; soundId:gyrosAudio');
 
-      // ATTENTION: звук + dog
-      const attention = findNodeByName(root,'attention');
+      // ATTENTION: собака
+      const attention=findNodeByName(root,'attention');
       if (attention) makeAtNode(attention,'trigger-reveal','attention-dog','radius:1.0; hysteresis:0.2; lifeMs:6000; fadeMs:600');
 
-      // Плейны-видео (2.5м) — теперь muted-видео + отдельное аудио; флип и «настоящие» цвета внутри компонента
-      const s2 = findNodeByName(root,'sunset2'); if (s2){ const e=makeAtNode(s2,'trigger-plane', null, null); e.setAttribute('plane-video-once','nodeName:sunset2; videoSrc:assets/video/sunset2.mp4; radius:2.5; hysteresis:0.1'); }
-      const s3 = findNodeByName(root,'sunset3'); if (s3){ const e=makeAtNode(s3,'trigger-plane', null, null); e.setAttribute('plane-video-once','nodeName:sunset3; videoSrc:assets/video/sunset3.mp4; radius:2.5; hysteresis:0.1'); }
-      const wv = findNodeByName(root,'waves');   if (wv){ const e=makeAtNode(wv,'trigger-plane', null, null); e.setAttribute('plane-video-once','nodeName:waves;   videoSrc:assets/video/waves.mp4;   radius:2.5; hysteresis:0.1'); }
+      // Плейны (2.5м) — логика внутри компонента разделяет iOS/не iOS
+      ['sunset2','sunset3','waves'].forEach(name=>{
+        const n=findNodeByName(root,name);
+        if (n){ const e=makeAtNode(n,'trigger-plane', null, null);
+          e.setAttribute('plane-video-once',`nodeName:${name}; videoSrc:assets/video/${name}.mp4; radius:2.5; hysteresis:0.1`);
+        }
+      });
     });
   }
 });
@@ -716,8 +667,7 @@ document.querySelector('a-scene').setAttribute('trigger-director','');
 /* ===== DIAG: P — вручную показать первый поп-ап ===== */
 window.addEventListener('keydown', e=>{
   if (e.key.toLowerCase()==='p'){
-    const trig = document.querySelector('.trigger-popup');
-    trig?.components['popup-video-hud']?.show();
+    document.querySelector('.trigger-popup')?.components['popup-video-hud']?.show();
   }
 });
 </script>
