@@ -154,6 +154,19 @@ const boot  = document.getElementById('boot');
 const cassetteHint = document.getElementById('cassette-hint');
 const cassetteRing = document.getElementById('cassette-ring');
 
+/* ===== глобальный семафор триггеров ===== */
+const TriggerGate = {
+  busy:false,
+  holder:null,
+  tryLock(who){
+    if (this.busy) return false;
+    this.busy=true; this.holder=who; return true;
+  },
+  release(who){
+    if (this.holder===who){ this.busy=false; this.holder=null; }
+  }
+};
+
 function whenModelReady(cb){
   const run = () => { const root = streetEntity.getObject3D('mesh'); if (root) cb(root); };
   if (streetEntity.hasLoaded && streetEntity.getObject3D('mesh')) run();
@@ -294,7 +307,22 @@ async function chooseMobileFirst(videoEl, baseSrc){
   return null;
 }
 
-/* ===== кассета: анимация + исчезновение ===== */
+/* ===== WebAudio для попап-звуков (надёжно на iOS/desktop) ===== */
+const audioCache = new Map();
+async function waLoad(url){
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if (audioCache.has(url)) return audioCache.get(url);
+  const res = await fetch(url, {cache:'force-cache'}); const buf = await res.arrayBuffer();
+  const decoded = await audioCtx.decodeAudioData(buf);
+  audioCache.set(url, decoded); return decoded;
+}
+function waPlayOnce(buffer){
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  const src = audioCtx.createBufferSource(); src.buffer=buffer; src.connect(audioCtx.destination); src.start();
+  return src;
+}
+
+/* ===== кассета: анимация + исчезновение + запуск фона ===== */
 AFRAME.registerComponent('cassette-setup',{
   init(){
     this.ready=false; this.cassette=null; this.t0=performance.now();
@@ -363,7 +391,7 @@ async function pumpQueue(){
   finally{ mediaBusy=false; setTimeout(pumpQueue, 200); }
 }
 
-/* ===== HUD pop-up: видео muted + отдельный звук ===== */
+/* ===== HUD pop-up: видео muted + звук через WebAudio + СЕМАФОР ===== */
 AFRAME.registerComponent('popup-video-hud',{
   schema:{
     radius:{default:2.0}, loops:{default:2}, hysteresis:{default:0.10},
@@ -373,9 +401,10 @@ AFRAME.registerComponent('popup-video-hud',{
   init(){
     this.active=false; this.waitExit=false; this.looped=0;
     this.video=popupHud; this._onEnded=this.onEnded.bind(this);
-    this.audioEl=null;
+    this.audioBuf=null; this.audioNode=null; this._who='popup';
   },
   tick(){
+    if (TriggerGate.busy && !this.active) return; // занято — игнорируем
     const m=(isTouch?rig:camEl).object3D.getWorldPosition(new THREE.Vector3());
     const t=this.el.object3D.getWorldPosition(new THREE.Vector3());
     const d=Math.hypot(m.x-t.x, m.z-t.z);
@@ -383,7 +412,9 @@ AFRAME.registerComponent('popup-video-hud',{
     if (!this.active && !this.waitExit && d<=this.data.radius) this.show();
   },
   async show(){
-    if (!userMediaUnlocked){ const retry=()=>{ window.removeEventListener('touchstart', retry); this.show(); }; window.addEventListener('touchstart', retry, {once:true}); return; }
+    if (!TriggerGate.tryLock(this._who)) return; // занято, не ставим в очередь
+    if (!userMediaUnlocked){ const retry=()=>{ window.removeEventListener('touchstart', retry); this.show(); }; window.addEventListener('touchstart', retry, {once:true}); TriggerGate.release(this._who); return; }
+
     await enqueueMedia(async ()=>{
       this.cleanup(); this.active=true; this.looped=0;
 
@@ -398,11 +429,10 @@ AFRAME.registerComponent('popup-video-hud',{
         if (!src){ this.hide(); return; }
         this.video.addEventListener('ended', this._onEnded);
 
-        // звук — отдельный <audio>
+        // звук — WebAudio
         if (this.data.audio){
-          this.audioEl = new Audio(this.data.audio);
-          this.audioEl.crossOrigin='anonymous'; this.audioEl.preload='auto';
-          try{ await this.audioEl.play(); }catch(_){}
+          this.audioBuf = await waLoad(this.data.audio);
+          this.audioNode = waPlayOnce(this.audioBuf);
         }
       }catch(_){ this.hide(); }
     });
@@ -412,15 +442,19 @@ AFRAME.registerComponent('popup-video-hud',{
     if (this.looped < this.data.loops){
       try{ this.video.currentTime=0.05; }catch(_){}
       robustPlay(this.video);
-      if (this.audioEl){ try{ this.audioEl.currentTime=0; this.audioEl.play(); }catch(_){}} // синхронный повтор аудио
+      if (this.audioBuf){ try{ this.audioNode?.stop(0); }catch(_){}
+        this.audioNode = waPlayOnce(this.audioBuf);
+      }
     } else { this.hide(); this.waitExit=true; }
   },
   hide(){
     try{ this.video.pause(); }catch(_){}
-    if (this.audioEl){ try{ this.audioEl.pause(); }catch(_){ } this.audioEl=null; }
-    popupWrap.style.display='none'; this.active=false;
+    try{ this.audioNode?.stop(0); }catch(_){}
+    this.audioNode=null;
+    popupWrap.style.display='none'; this.active=false; TriggerGate.release(this._who);
   },
-  cleanup(){ cleanupVideoEl(this.video); this.video.removeEventListener('ended', this._onEnded); if(this.audioEl){ try{this.audioEl.pause();}catch(_){ } this.audioEl=null; } }
+  cleanup(){ cleanupVideoEl(this.video); this.video.removeEventListener('ended', this._onEnded); try{ this.audioNode?.stop(0); }catch(_){}
+    this.audioNode=null; }
 });
 
 /* ===== «хвост» — на мобиле спрайты (плоские плашки) ===== */
@@ -437,14 +471,12 @@ AFRAME.registerComponent('crumb-trail',{
   },
   makeDot(){
     if (isTouch){
-      // лёгкая плашка (plane) «всегда лицом к камере»
       const e=document.createElement('a-entity'); e.classList.add('dot');
       e.setAttribute('geometry',`primitive: plane; width:${this.data.size}; height:${this.data.size}`);
       e.setAttribute('material',`color:${this.data.color}; shader: flat; opacity:0.9; transparent:true; side:double`);
-      e.setAttribute('look-at','#player'); // «билборд»
+      e.setAttribute('look-at','#player');
       this.el.sceneEl.appendChild(e); return e;
     } else {
-      // на десктопе оставим сферу
       const e=document.createElement('a-entity'); e.classList.add('dot');
       const r=this.data.size*0.35;
       e.setAttribute('geometry',`primitive: sphere; radius:${r}`);
@@ -465,10 +497,10 @@ AFRAME.registerComponent('crumb-trail',{
 });
 (isTouch?rig:camEl).setAttribute('crumb-trail','step:0.004; size:0.06; color:#00e0ff; fadeSeconds:15; max:4000; y:0.03');
 
-/* ===== gyros (reveal+звук) ===== */
+/* ===== gyros (reveal+звук) + СЕМАФОР ===== */
 AFRAME.registerComponent('reveal-node-rot-fade',{
   schema:{ targetName:{default:''}, radius:{default:2.0}, hysteresis:{default:0.20}, spinDegPerSec:{default:60}, lifeMs:{default:15000}, fadeMs:{default:800}, soundId:{default:'gyrosAudio'} },
-  init(){ this.armed=true; this.active=false; this.targetNode=null; this.spawnTime=0; this.fading=false; this.fadeStart=0; this.soundEnt=null;
+  init(){ this.armed=true; this.active=false; this.targetNode=null; this.spawnTime=0; this.fading=false; this.fadeStart=0; this.soundEnt=null; this._who='reveal';
     whenModelReady(root=>{
       this.targetNode=findNodeByName(root,this.data.targetName);
       if(!this.targetNode){ console.warn('Gyros node not found'); return; }
@@ -482,12 +514,15 @@ AFRAME.registerComponent('reveal-node-rot-fade',{
   },
   tick(time,dt){
     if(!this.targetNode) return;
+    if (TriggerGate.busy && !this.active) return;
+
     const now=this.el.sceneEl.time;
     const m=(isTouch?rig:camEl).object3D.getWorldPosition(new THREE.Vector3());
     const t=this.el.object3D.getWorldPosition(new THREE.Vector3());
     const d=Math.hypot(m.x-t.x, m.z-t.z);
 
     if (this.armed && d<=this.data.radius && !this.active){
+      if (!TriggerGate.tryLock(this._who)) return;
       this.active=true; this.fading=false; this.fadeStart=0; this.spawnTime=now;
       this.targetNode.visible=true; this.targetNode.scale.setScalar(1);
       try{ this.soundEnt?.components.sound.stopSound(); }catch(_){}
@@ -501,15 +536,15 @@ AFRAME.registerComponent('reveal-node-rot-fade',{
       if (this.fading){
         const t=(now - this.fadeStart)/this.data.fadeMs; const k=Math.min(1,Math.max(0,t)); const s=1-(k*k*(3-2*k));
         this.targetNode.scale.setScalar(Math.max(0,s));
-        if (k>=1){ this.targetNode.visible=false; this.active=false; this.fading=false; }
+        if (k>=1){ this.targetNode.visible=false; this.active=false; this.fading=false; TriggerGate.release(this._who); }
       }
   } }
 });
 
-/* ===== dog (attention + позиционный звук) ===== */
+/* ===== dog (attention + позиционный звук) + СЕМАФОР ===== */
 AFRAME.registerComponent('attention-dog',{
   schema:{ radius:{default:1.0}, hysteresis:{default:0.20}, lifeMs:{default:6000}, fadeMs:{default:600} },
-  init(){ this.armed=true; this.playing=false; this.dogNode=null; this.soundEl=null; this.spawnTime=0; this.fading=false; this.fadeStart=0;
+  init(){ this.armed=true; this.playing=false; this.dogNode=null; this.soundEl=null; this.spawnTime=0; this.fading=false; this.fadeStart=0; this._who='dog';
     whenModelReady(root=>{
       this.dogNode=findNodeByName(root,'dog'); if(!this.dogNode){ console.warn('dog node not found'); return; }
       this.dogNode.visible=false; this.dogNode.scale.setScalar(0);
@@ -522,11 +557,17 @@ AFRAME.registerComponent('attention-dog',{
   },
   tick(){
     if(!this.dogNode) return;
+    if (TriggerGate.busy && !this.playing) return;
+
     const m=(isTouch?rig:camEl).object3D.getWorldPosition(new THREE.Vector3());
     const t=this.el.object3D.getWorldPosition(new THREE.Vector3());
     const d=Math.hypot(m.x-t.x, m.z-t.z);
 
-    if (this.armed && d<=this.data.radius && !this.playing){ this.trigger(); this.armed=false; }
+    if (this.armed && d<=this.data.radius && !this.playing){
+      if (!TriggerGate.tryLock(this._who)) return;
+      this.trigger();
+      this.armed=false;
+    }
     else if (!this.armed && d>(this.data.radius+this.data.hysteresis) && !this.playing){ this.armed=true; }
 
     if (this.playing){
@@ -535,7 +576,7 @@ AFRAME.registerComponent('attention-dog',{
       if (this.fading){
         const t=(now - this.fadeStart)/this.data.fadeMs; const k=Math.min(1,Math.max(0,t)); const s=1-(k*k*(3-2*k));
         this.dogNode.scale.setScalar(Math.max(0,s));
-        if (k>=1){ this.dogNode.visible=false; this.playing=false; this.fading=false; }
+        if (k>=1){ this.dogNode.visible=false; this.playing=false; this.fading=false; TriggerGate.release(this._who); }
       }
     }
   },
@@ -547,12 +588,12 @@ AFRAME.registerComponent('attention-dog',{
   }
 });
 
-/* ===== Плейны (как было) ===== */
+/* ===== Плейны (видео) + СЕМАФОР ===== */
 AFRAME.registerComponent('plane-video-once',{
   schema:{ nodeName:{default:''}, videoSrc:{default:''}, radius:{default:2.5}, hysteresis:{default:0.10} },
   init(){
     this.node=null; this.ready=false; this.playing=false; this.waitExit=false;
-    this.video=null; this.tex=null;
+    this.video=null; this.tex=null; this._who='plane';
     whenModelReady(root=>{
       this.node=findNodeByName(root, this.data.nodeName); if(!this.node) return;
       this.node.visible=false; this.ready=true;
@@ -560,6 +601,8 @@ AFRAME.registerComponent('plane-video-once',{
   },
   tick(){
     if(!this.ready||!this.node) return;
+    if (TriggerGate.busy && !this.playing) return;
+
     const m=(isTouch?rig:camEl).object3D.getWorldPosition(new THREE.Vector3());
     const t=this.node.getWorldPosition(new THREE.Vector3());
     const d=Math.hypot(m.x-t.x, m.z-t.z);
@@ -567,6 +610,7 @@ AFRAME.registerComponent('plane-video-once',{
     else if (this.waitExit && d>(this.data.radius+this.data.hysteresis)){ this.waitExit=false; }
   },
   async startVideo(){
+    if (!TriggerGate.tryLock(this._who)) return;
     await enqueueMedia(async ()=>{
       this.playing=true; this.node.visible=true;
 
@@ -622,7 +666,7 @@ AFRAME.registerComponent('plane-video-once',{
     if (this.tex){ this.tex.dispose(); this.tex=null; }
     cleanupVideoEl(this.video);
     this.node.visible=false;
-    this.playing=false; this.waitExit=true;
+    this.playing=false; this.waitExit=true; TriggerGate.release(this._who);
   }
 });
 
@@ -631,7 +675,7 @@ AFRAME.registerComponent('plane-video-once',{
   const c=document.getElementById('radarCanvas'); const ctx=c.getContext('2d');
   const cx=c.width/2, cy=c.height/2, R=Math.min(cx,cy)-2, RADAR_RANGE=25;
   function ring(r,a){ ctx.strokeStyle=`rgba(255,255,255,${a})`; ctx.beginPath(); ctx.arc(cx,cy,r,0,Math.PI*2); ctx.stroke(); }
-  const INTERVAL = isTouch ? 120 : 80; // ~8–12 FPS
+  const INTERVAL = isTouch ? 120 : 80;
   setInterval(()=>{
     const cam=camEl.object3D, mover=(isTouch?rig:camEl).object3D; if(!cam||!mover) return;
     const fwd=new THREE.Vector3(); cam.getWorldDirection(fwd); fwd.y=0; fwd.normalize(); if(fwd.lengthSq()<1e-6) fwd.set(0,0,-1);
@@ -675,13 +719,18 @@ AFRAME.registerComponent('plane-video-once',{
   }, INTERVAL);
 })();
 
-/* ===== ограничение движения: Z ∈ [-10; 10] ===== */
-AFRAME.registerComponent('clamp-z',{schema:{min:{default:-10}, max:{default:10}}, tick(){
-  const p=(isTouch?rig:camEl).object3D.position;
-  if (p.z < this.data.min) p.z = this.data.min;
-  if (p.z > this.data.max) p.z = this.data.max;
-}});
-document.querySelector('a-scene').setAttribute('clamp-z','min:-10; max:10');
+/* ===== ограничение движения: прямоугольник X,Z ===== */
+AFRAME.registerComponent('clamp-rect',{
+  schema:{ minX:{default:-25}, maxX:{default:25}, minZ:{default:-10}, maxZ:{default:10} },
+  tick(){
+    const p=(isTouch?rig:camEl).object3D.position;
+    if (p.x < this.data.minX) p.x = this.data.minX;
+    if (p.x > this.data.maxX) p.x = this.data.maxX;
+    if (p.z < this.data.minZ) p.z = this.data.minZ;
+    if (p.z > this.data.maxZ) p.z = this.data.maxZ;
+  }
+});
+document.querySelector('a-scene').setAttribute('clamp-rect','minX:-25; maxX:25; minZ:-10; maxZ:10');
 
 /* ===== дирижёр триггеров ===== */
 AFRAME.registerComponent('trigger-director',{
