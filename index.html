@@ -10,8 +10,8 @@
   <style>
     *{ -webkit-tap-highlight-color:transparent; }
     html,body{ margin:0; height:100%; background:#000; overflow:hidden; }
-    a-loading-screen{ display:none !important; }
-    /* Не скрываем .a-dialog — это системный диалог A-Frame про гироскоп */
+    a-loading-screen{ display:none !important; } /* без глич-сплэша */
+    /* не скрываем .a-dialog — нужен системный диалог гироскопа */
 
     #mute{
       position:fixed; left:12px; top:12px; padding:10px; border:0; border-radius:10px;
@@ -104,7 +104,7 @@
     <video id="planeVideoMobile" preload="metadata" playsinline webkit-playsinline muted style="display:none"></video>
 
     <!-- Аудио -->
-    <audio id="amb"        src="assets/audio/Analog_Mannequin%20Milk%20Cassette%20X.mp3%20-%20Demo.mp3" preload="auto" crossorigin="anonymous"></audio>
+    <audio id="amb"        src="assets/audio/Analog_Mannequin%20Milk%20Cassette%20X.mp3%20-%20Demo.mp3" preload="metadata" crossorigin="anonymous"></audio>
     <audio id="dogAudio"   src="assets/audio/dog.mp3"   preload="auto" crossorigin="anonymous"></audio>
     <audio id="gyrosAudio" src="assets/audio/gyros.mp3" preload="auto" crossorigin="anonymous"></audio>
   </a-assets>
@@ -136,10 +136,10 @@
 <div id="radar"><canvas id="radarCanvas"></canvas></div>
 
 <script>
-/* ===== globals ===== */
+/* ===== detect ===== */
 const isTouch = AFRAME.utils.device.isMobile() || navigator.maxTouchPoints>0 || window.matchMedia('(pointer: coarse)').matches;
 function isiOS(){ return /iP(hone|ad|od)/.test(navigator.platform) || (navigator.userAgent.includes('Mac') && 'ontouchend' in document); }
-let mediaActive = 0; // пока играет любое видео (HUD/plane) — повышаем, по окончании — понижаем
+let mediaActive = 0;
 
 const muteBtn = document.getElementById('mute');
 const popupWrap = document.getElementById('popup');
@@ -152,7 +152,7 @@ const boot  = document.getElementById('boot');
 const cassetteHint = document.getElementById('cassette-hint');
 const cassetteRing = document.getElementById('cassette-ring');
 
-/* ===== семафор — ТОЛЬКО мобилка ===== */
+/* ===== семафор — только мобилка ===== */
 const TriggerGate = {
   get enabled(){ return isTouch; },
   busy:false, holder:null,
@@ -160,6 +160,7 @@ const TriggerGate = {
   release(who){ if(!this.enabled) return; if(this.holder===who){ this.busy=false; this.holder=null; } }
 };
 
+/* ===== utils ===== */
 function whenModelReady(cb){
   const run = () => { const root = streetEntity.getObject3D('mesh'); if (root) cb(root); };
   if (streetEntity.hasLoaded && streetEntity.getObject3D('mesh')) run();
@@ -181,40 +182,28 @@ function fmt(n){return Number(n).toFixed(3)}
 setInterval(()=>{ const p = camEl.object3D.getWorldPosition(new THREE.Vector3());
   document.getElementById('hud').textContent = `x:${fmt(p.x)}  y:${fmt(p.y)}  z:${fmt(p.z)}`; }, 200);
 
-/* ===== фон. звук (с 9-й сек) — как раньше ===== */
-let audioCtx=null, ambGain=null, ambBuffer=null, ambSource=null, ambStarted=false, ambMuted=false;
-async function loadAmbBuffer(url){ const res = await fetch(url, {cache:'force-cache'}); const arr = await res.arrayBuffer();
-  const ctx = audioCtx || new (window.AudioContext||window.webkitAudioContext)(); audioCtx=ctx; return await ctx.decodeAudioData(arr); }
-async function startBackgroundFrom9s(){
+/* ===== Фон: <audio> (минимум памяти), старт с 9s по кассете ===== */
+const ambEl = document.getElementById('amb');
+let ambStarted=false, ambMuted=false;
+ambEl.addEventListener('loadedmetadata', ()=>{ try{ ambEl.currentTime = Math.min(ambEl.duration-0.1, 9); }catch(_){ } });
+function startAmbOnce(){
   if (ambStarted) return;
-  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-  if (!ambGain){ ambGain = audioCtx.createGain(); ambGain.gain.value = ambMuted?0:1; ambGain.connect(audioCtx.destination); }
-  if (!ambBuffer) ambBuffer = await loadAmbBuffer(document.getElementById('amb').src);
-  ambSource = audioCtx.createBufferSource(); ambSource.buffer = ambBuffer; ambSource.loop = true; ambSource.connect(ambGain);
-  const offset = Math.min(ambBuffer.duration-0.1, 9);
-  ambSource.start(0, offset);
-  ambStarted = true;
+  ambStarted=true; ambEl.loop=true;
+  ambEl.play().then(()=>{ /* ok */ }).catch(()=>{ ambStarted=false; });
 }
-function toggleAmbMute(){ ambMuted = !ambMuted; if (ambGain) ambGain.gain.value = ambMuted?0:1; muteBtn.textContent = ambMuted ? '🔇' : '🔊'; }
+function toggleAmbMute(){ ambMuted=!ambMuted; ambEl.muted=ambMuted; muteBtn.textContent = ambMuted ? '🔇' : '🔊'; }
 muteBtn.addEventListener('click', toggleAmbMute);
 
-/* ===== разблок звука ===== */
-let userMediaUnlocked=false;
+/* ===== разблок звука + сценовый контекст ===== */
 function resumeSceneAudioContext(){
   try{
     const ctx = document.querySelector('a-scene')?.audioListener?.context;
     if (ctx && ctx.state !== 'running') ctx.resume().catch(()=>{});
   }catch(_){}
 }
-function unlockMedia(){
-  if (userMediaUnlocked) return;
-  userMediaUnlocked=true;
-  try{ if (audioCtx && audioCtx.state!=='running') audioCtx.resume(); }catch(_){}
-  resumeSceneAudioContext();
-}
-['touchstart','pointerdown','mousedown'].forEach(ev=>window.addEventListener(ev, unlockMedia, {passive:true}));
+['touchstart','pointerdown','mousedown'].forEach(ev=>window.addEventListener(ev, ()=>{ resumeSceneAudioContext(); ambEl.play().catch(()=>{}); }, {passive:true}));
 
-/* ===== мобилка: пиксели и look-controls (гироскоп) ===== */
+/* ===== мобилка: renderer + гироскоп ===== */
 document.querySelector('a-scene').addEventListener('loaded', ()=>{
   if (isiOS()){
     try{ const r = document.querySelector('a-scene').renderer; r.setPixelRatio(1); r.antialias = false; }catch(_){}
@@ -224,7 +213,7 @@ document.querySelector('a-scene').addEventListener('loaded', ()=>{
   }
 });
 
-/* ===== размеры HUD ===== */
+/* ===== HUD размеров ===== */
 const JOY_SIZE=160; const RADAR_SIZE = (!isTouch ? 400 : JOY_SIZE);
 document.documentElement.style.setProperty('--radar-size', RADAR_SIZE+'px');
 (function(){
@@ -244,7 +233,7 @@ if (isTouch){
   const jm=nipplejs.create({ zone:jmWrap, mode:'static', size:JOY_SIZE, position:{left:'50%',top:'50%'}, color:'white', restOpacity:0.85 });
   jm.on('move',(_,d)=>{ if(!d||!d.vector) return; moveActive=true; moveVec.x=d.vector.x; moveVec.y=d.vector.y; });
   jm.on('end', resetSticks);
-  const jr=nipplejs.create({ zone:jrWrap, mode:'static', size:JOY_SIZE, position:{left:'50%',top:'50%'}, color:'white', restOpacity:0.85 });
+  const jr=nipplejs.create({ zone:jrWrap, mode:'static', size:JOY_SIZE, position:{left:'50%',top:'50%'} , color:'white', restOpacity:0.85 });
   jr.on('move',(_,d)=>{ if(!d||!d.vector) return; rotActive=true; rotVec.x=d.vector.x; rotVec.y=d.vector.y; });
   jr.on('end', resetSticks);
 
@@ -270,7 +259,7 @@ if (isTouch){
 }
 const moverEl = isTouch ? rig : camEl;
 
-/* ===== утилиты видео ===== */
+/* ===== видео утилиты ===== */
 function cleanupVideoEl(v){ if(!v) return; try{ v.pause(); }catch(_){}
   try{ v.removeAttribute('src'); v.src=''; }catch(_){}
   try{ v.load(); }catch(_){}
@@ -289,7 +278,6 @@ function waitFirstFrame(v, timeout=2000){
       const to=setTimeout(()=>{ if(!done) resolve(false); }, timeout);
       v.requestVideoFrameCallback(()=>{ if(!done){ done=true; clearTimeout(to); resolve(true); } });
     }else{
-      // fallback: чуть подождать и считать, что ок
       setTimeout(()=>resolve(true), 180);
     }
   });
@@ -298,7 +286,6 @@ async function robustPlay(video, {tries=4, wait=260}={}){
   for(let i=0;i<tries;i++){
     try{
       await waitCanPlay(video, 2500);
-      // лёгкий подскок таймкода помогает iOS сорваться с 0-го кадра
       try{ video.currentTime = Math.max(0, (video.currentTime||0) + 0.05); }catch(_){}
       const p=video.play(); if (p) await p;
       const ok = await waitFirstFrame(video, 1500);
@@ -310,7 +297,6 @@ async function robustPlay(video, {tries=4, wait=260}={}){
 }
 async function setVideoSrcOnce(videoEl, src){
   if (!videoEl) return false;
-  // если уже этот источник — не трогаем, чтобы не рвать декодер
   if (videoEl.currentSrc && videoEl.currentSrc.endsWith(src)) return true;
   if (videoEl.src && videoEl.src.endsWith(src)) return true;
   try{ videoEl.pause(); }catch(_){}
@@ -332,22 +318,7 @@ async function chooseMobileFirst(videoEl, baseSrc){
   return null;
 }
 
-/* ===== WebAudio для попап-звуков (оставляем отдельным, но резюмируем сцену) ===== */
-let waCtx=null; const waBufCache=new Map();
-async function waLoad(url){
-  if (!waCtx) waCtx = new (window.AudioContext || window.webkitAudioContext)();
-  if (waBufCache.has(url)) return waBufCache.get(url);
-  const res = await fetch(url, {cache:'force-cache'}); const buf = await res.arrayBuffer();
-  const decoded = await waCtx.decodeAudioData(buf);
-  waBufCache.set(url, decoded); return decoded;
-}
-function waPlayOnce(buffer){
-  if (!waCtx) waCtx = new (window.AudioContext || window.webkitAudioContext)();
-  const src = waCtx.createBufferSource(); src.buffer=buffer; src.connect(waCtx.destination); src.start();
-  return src;
-}
-
-/* ===== кассета: анимация + схлоп ===== */
+/* ===== кассета: анимация + запуск фона + схлоп ===== */
 AFRAME.registerComponent('cassette-setup',{
   init(){
     this.ready=false; this.cassette=null; this.t0=performance.now();
@@ -365,7 +336,7 @@ AFRAME.registerComponent('cassette-setup',{
       s.classList.add('clickable');
       s.addEventListener('click', async ()=>{
         try{
-          await startBackgroundFrom9s();
+          startAmbOnce();
           document.getElementById('mute').style.display='block';
           cassetteHint.style.display='none'; cassetteRing.style.display='none';
           this.shrink=true; this.shrinkStart=performance.now();
@@ -399,7 +370,7 @@ AFRAME.registerComponent('cassette-setup',{
 });
 document.querySelector('a-scene').setAttribute('cassette-setup','');
 
-/* ===== очередь медиа на iOS (для мобилки) ===== */
+/* ===== очередь медиа (iOS) ===== */
 const mediaQueue = []; let mediaBusy=false;
 async function enqueueMedia(task){
   if (!isiOS()) return task(); // не iOS – сразу
@@ -418,12 +389,12 @@ AFRAME.registerComponent('popup-video-hud',{
   schema:{
     radius:{default:2.0}, loops:{default:2}, hysteresis:{default:0.10},
     side:{default:'right'}, src:{default:'assets/video/clip1.mp4'},
-    audio:{default:''}
+    audio:{default:''} /* десктоп использует звук из видео; мобилка — без звука */
   },
   init(){
     this.active=false; this.waitExit=false; this.looped=0;
     this.video=popupHud; this._onEnded=this.onEnded.bind(this);
-    this.audioBuf=null; this.audioNode=null; this._who='popup';
+    this._who='popup';
   },
   tick(){
     if (TriggerGate.enabled && TriggerGate.busy && !this.active) return;
@@ -435,7 +406,6 @@ AFRAME.registerComponent('popup-video-hud',{
   },
   async show(){
     if (!TriggerGate.tryLock(this._who)) return;
-    if (!userMediaUnlocked){ const retry=()=>{ window.removeEventListener('touchstart', retry); this.show(); }; window.addEventListener('touchstart', retry, {once:true}); TriggerGate.release(this._who); return; }
 
     const run = async ()=>{
       this.cleanup(); this.active=true; this.looped=0; mediaActive++;
@@ -448,6 +418,7 @@ AFRAME.registerComponent('popup-video-hud',{
         this.video.removeEventListener('ended', this._onEnded);
 
         if (!isTouch){
+          /* ДЕСКТОП: видео со своим звуком */
           this.video.muted=false;
           let src = await chooseMobileFirst(this.video, this.data.src);
           if (!src){ this.hide(); return; }
@@ -455,16 +426,13 @@ AFRAME.registerComponent('popup-video-hud',{
           const ok=await robustPlay(this.video);
           if (!ok){ this.hide(); return; }
         } else {
+          /* МОБИЛА: поп-ап без звука */
           this.video.muted=true;
           let src = await chooseMobileFirst(this.video, this.data.src);
           if (!src){ this.hide(); return; }
           this.video.addEventListener('ended', this._onEnded);
-          // звук — отдельным WebAudio, но сценовый контекст тоже резюмим (для стабильности общего аудио)
-          resumeSceneAudioContext();
-          if (this.data.audio){
-            this.audioBuf = await waLoad(this.data.audio);
-            this.audioNode = waPlayOnce(this.audioBuf);
-          }
+          const ok=await robustPlay(this.video);
+          if (!ok){ this.hide(); return; }
         }
       }catch(_){ this.hide(); }
     };
@@ -476,61 +444,53 @@ AFRAME.registerComponent('popup-video-hud',{
     if (this.looped < this.data.loops){
       try{ this.video.currentTime=0.05; }catch(_){}
       robustPlay(this.video);
-      if (isTouch && this.audioBuf){ try{ this.audioNode?.stop(0); }catch(_){}
-        this.audioNode = waPlayOnce(this.audioBuf);
-      }
     } else { this.hide(); this.waitExit=true; }
   },
   hide(){
     try{ this.video.pause(); }catch(_){}
-    if (isTouch){ try{ this.audioNode?.stop(0); }catch(_){} this.audioNode=null; }
     popupWrap.style.display='none'; this.active=false; mediaActive = Math.max(0, mediaActive-1); TriggerGate.release(this._who);
   },
-  cleanup(){ cleanupVideoEl(this.video); this.video.removeEventListener('ended', this._onEnded);
-    if (isTouch){ try{ this.audioNode?.stop(0); }catch(_){} this.audioNode=null; } }
+  cleanup(){ cleanupVideoEl(this.video); this.video.removeEventListener('ended', this._onEnded); }
 });
 
-/* ===== «хвост» ===== */
+/* ===== «хвост»: облегчённый на мобилке ===== */
 AFRAME.registerComponent('crumb-trail',{
-  schema:{ baseStep:{default:0.004}, size:{default:0.06}, color:{default:'#00e0ff'},
-          fadeSeconds:{default:15}, max:{default:isTouch?4000:30000}, y:{default:0.03} },
-  init(){ this.last=null; this.pool=[]; this.active=[]; this.tmp=new THREE.Vector3(); this.forceReset=false; },
+  schema:{ step:{default:isTouch?0.012:0.004}, size:{default:isTouch?0.045:0.06}, color:{default:'#00e0ff'},
+          fadeSeconds:{default:isTouch?8:15}, max:{default:isTouch?200:30000}, y:{default:0.03} },
+  init(){ this.last=null; this.pool=[]; this.active=[]; this.tmp=new THREE.Vector3(); },
   tick(){
     if (document.hidden){ this.last=null; return; }
-    const step = this.data.baseStep * (isTouch && mediaActive>0 ? 2.5 : 1.0);
     const pos=this.el.object3D.getWorldPosition(this.tmp); const here=new THREE.Vector3(pos.x, this.data.y, pos.z);
     if (!this.last){ this.last=here.clone(); this.drop(here); return; }
-    if (here.distanceTo(this.last) >= step){ this.last.copy(here); this.drop(here); }
+    if (here.distanceTo(this.last) >= this.data.step){ this.last.copy(here); this.drop(here); }
   },
   makeDot(){
+    const e=document.createElement('a-entity'); e.classList.add('dot');
     if (isTouch){
-      const e=document.createElement('a-entity'); e.classList.add('dot');
       e.setAttribute('geometry',`primitive: plane; width:${this.data.size}; height:${this.data.size}`);
-      e.setAttribute('material',`color:${this.data.color}; shader: flat; opacity:0.9; transparent:true; side:double`);
+      e.setAttribute('material',`color:${this.data.color}; shader: flat; opacity:0.85; transparent:true; side:double`);
       e.setAttribute('look-at','#player');
-      this.el.sceneEl.appendChild(e); return e;
     } else {
-      const e=document.createElement('a-entity'); e.classList.add('dot');
       const r=this.data.size*0.35;
       e.setAttribute('geometry',`primitive: sphere; radius:${r}`);
       e.setAttribute('material',`color:${this.data.color}; shader: flat; opacity:0.9; transparent:true`);
-      this.el.sceneEl.appendChild(e); return e;
     }
+    this.el.sceneEl.appendChild(e); return e;
   },
   drop(p){
     const e=this.pool.pop()||this.makeDot(); e.object3D.position.set(p.x, this.data.y, p.z); e.object3D.visible=true; this.active.push(e);
     const life=this.data.fadeSeconds*1000;
     setTimeout(()=>{ if(!e.parentNode) return;
-      e.setAttribute('animation__fade','property: material.opacity; to:0; dur:600; startEvents:startfade;');
+      e.setAttribute('animation__fade','property: material.opacity; to:0; dur:400; startEvents:startfade;');
       e.emit('startfade'); setTimeout(()=>{ e.object3D.visible=false; e.removeAttribute('animation__fade');
-        const i=this.active.indexOf(e); if(i>=0) this.active.splice(i,1); this.pool.push(e); },620);
+        const i=this.active.indexOf(e); if(i>=0) this.active.splice(i,1); this.pool.push(e); },420);
     }, life);
     if (this.active.length>this.data.max){ const old=this.active.shift(); if(old){ old.object3D.visible=false; this.pool.push(old); } }
   }
 });
-(isTouch?rig:camEl).setAttribute('crumb-trail','baseStep:0.004; size:0.06; color:#00e0ff; fadeSeconds:15; max:4000; y:0.03');
+(isTouch?rig:camEl).setAttribute('crumb-trail','');
 
-/* ===== gyros (reveal+звук) ===== */
+/* ===== gyros (reveal + звук) ===== */
 AFRAME.registerComponent('reveal-node-rot-fade',{
   schema:{ targetName:{default:''}, radius:{default:2.0}, hysteresis:{default:0.20}, spinDegPerSec:{default:60}, lifeMs:{default:15000}, fadeMs:{default:800}, soundId:{default:'gyrosAudio'} },
   init(){ this.armed=true; this.active=false; this.targetNode=null; this.spawnTime=0; this.fading=false; this.fadeStart=0; this.soundEnt=null; this._who='reveal';
@@ -541,6 +501,7 @@ AFRAME.registerComponent('reveal-node-rot-fade',{
       const wp=new THREE.Vector3(); this.targetNode.getWorldPosition(wp);
       const s=document.createElement('a-entity');
       s.setAttribute('position',`${wp.x} ${wp.y} ${wp.z}`);
+      // На мобилке звук оставляем; A-Frame sound использует scene audioListener
       s.setAttribute('sound',`src:#${this.data.soundId}; positional:true; refDistance:2; maxDistance:12; rolloffFactor:1`);
       streetEntity.sceneEl.appendChild(s); this.soundEnt=s;
     });
@@ -556,12 +517,12 @@ AFRAME.registerComponent('reveal-node-rot-fade',{
 
     if (this.armed && d<=this.data.radius && !this.active){
       if (!TriggerGate.tryLock(this._who)) return;
-      // iOS может усыпить контекст сцены — разбудим перед звуком
+      // будим сценовый аудиоконтекст перед проигрыванием
       resumeSceneAudioContext();
       this.active=true; this.fading=false; this.fadeStart=0; this.spawnTime=now;
       this.targetNode.visible=true; this.targetNode.scale.setScalar(1);
       try{ this.soundEnt?.components.sound.stopSound(); }catch(_){}
-      try{ this.soundEnt?.components.sound.playSound(); }catch(_){ setTimeout(()=>this.soundEnt?.components.sound.playSound(), 140); }
+      try{ this.soundEnt?.components.sound.playSound(); }catch(_){ setTimeout(()=>this.soundEnt?.components.sound.playSound(), 120); }
     } else if (!this.armed && d>(this.data.radius+this.data.hysteresis) && !this.active){ this.armed=true; }
 
     if (this.active){
@@ -576,7 +537,7 @@ AFRAME.registerComponent('reveal-node-rot-fade',{
   } }
 });
 
-/* ===== dog (attention + позиционный звук) ===== */
+/* ===== dog (attention + звук) ===== */
 AFRAME.registerComponent('attention-dog',{
   schema:{ radius:{default:1.0}, hysteresis:{default:0.20}, lifeMs:{default:6000}, fadeMs:{default:600} },
   init(){ this.armed=true; this.playing=false; this.dogNode=null; this.soundEl=null; this.spawnTime=0; this.fading=false; this.fadeStart=0; this._who='dog';
@@ -619,16 +580,16 @@ AFRAME.registerComponent('attention-dog',{
     this.playing=true; this.spawnTime=this.el.sceneEl.time; this.fading=false;
     this.dogNode.visible=true; this.dogNode.scale.setScalar(1);
     try{ this.soundEl?.components.sound.stopSound(); }catch(_){}
-    try{ this.soundEl?.components.sound.playSound(); }catch(_){ setTimeout(()=>this.soundEl?.components.sound.playSound(),140); }
+    try{ this.soundEl?.components.sound.playSound(); }catch(_){ setTimeout(()=>this.soundEl?.components.sound.playSound(),120); }
   }
 });
 
-/* ===== Плейны (видео) — с watchdog и корректным флипом ===== */
+/* ===== Плейны (видео) — без звука на мобилке, с фиксом флипа и watchdog ===== */
 AFRAME.registerComponent('plane-video-once',{
   schema:{ nodeName:{default:''}, videoSrc:{default:''}, radius:{default:2.5}, hysteresis:{default:0.10} },
   init(){
     this.node=null; this.ready=false; this.playing=false; this.waitExit=false;
-    this.video=null; this.tex=null; this._who='plane'; this.failTimer=null; this.progressTimer=null; this.lastT=0;
+    this.video=null; this.tex=null; this._who='plane'; this.failTimer=null; this.lastT=0;
     this._fail = ()=>this.finish(true);
     whenModelReady(root=>{
       this.node=findNodeByName(root, this.data.nodeName); if(!this.node) return;
@@ -649,10 +610,8 @@ AFRAME.registerComponent('plane-video-once',{
     this.tex = new THREE.VideoTexture(video);
     if (THREE.SRGBColorSpace) this.tex.colorSpace = THREE.SRGBColorSpace;
     this.tex.minFilter=THREE.LinearFilter; this.tex.magFilter=THREE.LinearFilter; this.tex.needsUpdate=true;
-    // важное отличие: корректный флип
-    this.tex.wrapS = THREE.RepeatWrapping;
-    this.tex.repeat.x = -1;
-    this.tex.offset.x = 1;
+    this.tex.wrapS = THREE.RepeatWrapping; // фикс флипа
+    this.tex.repeat.x = -1; this.tex.offset.x = 1;
 
     const mat = new THREE.MeshBasicMaterial({ map:this.tex, side:THREE.DoubleSide });
     mat.toneMapped=false;
@@ -676,7 +635,6 @@ AFRAME.registerComponent('plane-video-once',{
       resumeSceneAudioContext();
 
       const onReady = async (v)=>{
-        // ждём первый кадр, потом только подвешиваем материал
         const ok = await robustPlay(v);
         if (!ok){ this.finish(true); return false; }
         this.attachTex(v);
@@ -685,16 +643,17 @@ AFRAME.registerComponent('plane-video-once',{
 
       if (isiOS()){
         this.video = planeVideoMobile; try{ this.video.pause(); }catch(_){}
+        this.video.muted=true; // мобилка без звука
         ;['error','stalled','suspend','abort','emptied'].forEach(ev=>this.video.addEventListener(ev, this._fail, {once:true}));
         const src = await chooseMobileFirst(this.video, this.data.videoSrc);
         if (!src){ this.finish(true); return; }
         this.armWatchdog();
         const ok = await onReady(this.video); if (!ok) return;
-        setTimeout(()=>{ if (this.playing) this.finish(false); }, 60000); // safety stop
+        setTimeout(()=>{ if (this.playing) this.finish(false); }, 60000);
       } else {
         this.video = document.createElement('video');
         this.video.playsInline=true; this.video.preload='metadata'; this.video.crossOrigin='anonymous';
-        this.video.loop=false; this.video.muted=false;
+        this.video.loop=false; this.video.muted=false; // ДЕСКТОП — со звуком
         ;['error','stalled','suspend','abort','emptied'].forEach(ev=>this.video.addEventListener(ev, this._fail, {once:true}));
 
         let src = await chooseMobileFirst(this.video, this.data.videoSrc);
@@ -707,7 +666,7 @@ AFRAME.registerComponent('plane-video-once',{
 
     if (isiOS()) await enqueueMedia(run); else await run();
   },
-  finish(emergency){
+  finish(){
     try{ this.video?.pause(); }catch(_){}
     if (this.tex){ this.tex.dispose(); this.tex=null; }
     if (this.video){
@@ -722,17 +681,13 @@ AFRAME.registerComponent('plane-video-once',{
   }
 });
 
-/* ===== Радар (подснижаем частоту при активном видео на мобилке) ===== */
+/* ===== Радар (реже на мобилке) ===== */
 (function(){
   const c=document.getElementById('radarCanvas'); const ctx=c.getContext('2d');
   const cx=c.width/2, cy=c.height/2, R=Math.min(cx,cy)-2, RADAR_RANGE=25;
   function ring(r,a){ ctx.strokeStyle=`rgba(255,255,255,${a})`; ctx.beginPath(); ctx.arc(cx,cy,r,0,Math.PI*2); ctx.stroke(); }
-  const BASE_INTERVAL = isTouch ? 120 : 80;
-  let skip=0;
+  const BASE_INTERVAL = isTouch ? 160 : 80; // реже на мобилке
   setInterval(()=>{
-    // при активном видео на мобилке — обновляем реже
-    if (isTouch && mediaActive>0){ skip = (skip+1)%2; if (skip) return; }
-
     const cam=camEl.object3D, mover=(isTouch?rig:camEl).object3D; if(!cam||!mover) return;
     const fwd=new THREE.Vector3(); cam.getWorldDirection(fwd); fwd.y=0; fwd.normalize(); if(fwd.lengthSq()<1e-6) fwd.set(0,0,-1);
     const right=new THREE.Vector3().crossVectors(fwd,new THREE.Vector3(0,1,0)).normalize();
@@ -769,13 +724,13 @@ AFRAME.registerComponent('plane-video-once',{
         ctx.beginPath(); ctx.arc(cx-lx*s, cy+lz*s, Math.max(3,R*0.03), 0, Math.PI*2); ctx.fill();
       });
     }
-    draw(popupTrigs,'#ff69b4'); // розовый — HUD
-    draw(revealTrigs,'#ffd400'); // жёлтый — спавн узлов
-    draw(planeTrigs, '#65d0ff'); // голубой — плейны
+    draw(popupTrigs,'#ff69b4');
+    draw(revealTrigs,'#ffd400');
+    draw(planeTrigs, '#65d0ff');
   }, BASE_INTERVAL);
 })();
 
-/* ===== ограничение движения по X,Z ===== */
+/* ===== ограничение X/Z ===== */
 AFRAME.registerComponent('clamp-rect',{
   schema:{ minX:{default:-25}, maxX:{default:25}, minZ:{default:-10}, maxZ:{default:10} },
   tick(){
@@ -788,7 +743,7 @@ AFRAME.registerComponent('clamp-rect',{
 });
 document.querySelector('a-scene').setAttribute('clamp-rect','minX:-25; maxX:25; minZ:-10; maxZ:10');
 
-/* ===== дирижёр триггеров ===== */
+/* ===== триггеры по узлам ===== */
 AFRAME.registerComponent('trigger-director',{
   init(){
     whenModelReady(root=>{
@@ -824,9 +779,9 @@ AFRAME.registerComponent('trigger-director',{
 });
 document.querySelector('a-scene').setAttribute('trigger-director','');
 
-/* DIAG: P — форс-попап на десктопе (оставляем как было) */
+/* DIAG desktop: P — форс-попап */
 window.addEventListener('keydown', e=>{
-  if (e.key.toLowerCase()==='p'){
+  if (!isTouch && e.key.toLowerCase()==='p'){
     document.querySelector('.trigger-popup')?.components['popup-video-hud']?.show();
   }
 });
