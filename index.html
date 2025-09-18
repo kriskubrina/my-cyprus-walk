@@ -785,7 +785,7 @@ async function pumpQueue(){
   finally{ mediaBusy=false; setTimeout(pumpQueue, 200); }
 }
 
-/* Сериализация собаки и гироса (через очередь; ждём life) */
+/* Сериализация собаки и гироса (через очередь; ждем life) */
 (function(){
   function wrap(name, category){
     try{
