@@ -75,7 +75,27 @@
       border-radius:50%; box-shadow:0 0 0 1px rgba(255,255,255,.25) inset;
       z-index:51; pointer-events:none; display:none;
     }
-  </style>
+  
+    /* Mobile cue text */
+    #cueText{
+      position:fixed;
+      left:50%;
+      bottom:18%;
+      transform:translateX(-50%);
+      color:#fff;
+      font:14px/1.2 system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      background:rgba(0,0,0,.4);
+      padding:6px 10px;
+      border-radius:10px;
+      letter-spacing:.2px;
+      opacity:0;
+      transition:opacity .25s ease;
+      pointer-events:none;
+      z-index:32;
+    }
+    #cueText.show{ opacity:.95; }
+
+</style>
 </head>
 <body>
 <div id="boot">
@@ -89,6 +109,7 @@
   <div class="dots"><span class="dot3"></span><span class="dot3"></span><span class="dot3"></span></div>
 </div>
 <div id="cassette-ring"></div>
+<div id="cueText"></div>
 
 <a-scene
   renderer="colorManagement:true; physicallyCorrectLights:false; antialias:true; precision:mediump; powerPreference:high-performance"
@@ -135,6 +156,63 @@
 <div id="radar"><canvas id="radarCanvas"></canvas></div>
 
 <script>
+
+// --- Mobile cue + serialized trigger queue ---
+const CUE_PHRASES = [
+  'oh, this spot',
+  'funny how it comes back',
+  'I was here, wasn’t I',
+  'feels familiar',
+  'I know this place',
+  'almost like a loop'
+];
+function showCue(){
+  if(!isTouch) return;
+  const el = document.getElementById('cueText');
+  if (!el) return;
+  const i = (Math.random()*CUE_PHRASES.length)|0;
+  el.textContent = CUE_PHRASES[i];
+  el.classList.add('show');
+}
+function hideCue(){
+  const el = document.getElementById('cueText');
+  if (el) el.classList.remove('show');
+}
+
+const triggerQueue = [];
+let triggerBusy = false;
+let ambDuckCnt = 0;
+function ambDuckOn(){ ambDuckCnt++; if (typeof ambGain!=='undefined' && ambGain) ambGain.gain.value = 0; }
+function ambDuckOff(){ ambDuckCnt = Math.max(0, ambDuckCnt-1); if (typeof ambGain!=='undefined' && ambGain) ambGain.gain.value = (ambMuted?0:1); }
+
+async function enqueueTrigger(category, runner){
+  if (!isTouch) return runner();
+  return new Promise((resolve) => {
+    triggerQueue.push({category, runner, resolve});
+    pumpTrigger();
+  });
+}
+async function pumpTrigger(){
+  if (triggerBusy || triggerQueue.length===0) return;
+  triggerBusy = true;
+  const {category, runner, resolve} = triggerQueue.shift();
+  const needDuck = (category === 'hud' || category === 'plane');
+  try{
+    if (needDuck) ambDuckOn();
+    showCue();
+    const out = await runner();
+    resolve(out);
+  }catch(e){
+    console.warn('Trigger error:', e);
+    resolve();
+  }finally{
+    if (needDuck) ambDuckOff();
+    hideCue();
+    triggerBusy = false;
+    setTimeout(pumpTrigger, 100);
+  }
+}
+
 const isTouch = AFRAME.utils.device.isMobile() || navigator.maxTouchPoints>0 || window.matchMedia('(pointer: coarse)').matches;
 function isiOS(){ return /iP(hone|ad|od)/.test(navigator.platform) || (navigator.userAgent.includes('Mac') && 'ontouchend' in document); }
 
@@ -282,6 +360,7 @@ async function robustPlay(video, {tries=10, step=0.05, wait=260}={}){
   }
   return ok;
 }
+
 async function chooseMobileFirst(videoEl, baseSrc){
   const mobileSrc = baseSrc.replace(/\.mp4$/i,'.mobile.mp4');
   try{
@@ -289,6 +368,8 @@ async function chooseMobileFirst(videoEl, baseSrc){
     const ok = await robustPlay(videoEl);
     if (ok) return mobileSrc;
   }catch(_){}
+  // On mobile: require .mobile.mp4, otherwise skip
+  if (isTouch) return null;
   try{
     videoEl.src = baseSrc; videoEl.load(); videoEl.currentTime=0.05;
     const ok = await robustPlay(videoEl);
@@ -296,6 +377,7 @@ async function chooseMobileFirst(videoEl, baseSrc){
   }catch(_){}
   return null;
 }
+
 
 /* кассета */
 AFRAME.registerComponent('cassette-setup',{
@@ -361,12 +443,13 @@ AFRAME.registerComponent('popup-video-hud',{
     if (this.waitExit && d>(this.data.radius+this.data.hysteresis)) this.waitExit=false;
     if (!this.active && !this.waitExit && d<=this.data.radius) this.show();
   },
-  async show(){
-    const run = async ()=>{
+  async show(){ let doneResolve; const run = async ()=>{
       this.cleanup(); this.active=true; this.looped=0;
 
       if (this.data.side==='left'){ popupWrap.style.left='12px'; popupWrap.style.right='auto'; } else { popupWrap.style.right='12px'; popupWrap.style.left='auto'; }
       popupWrap.style.display='block';
+      const done = new Promise(res=>doneResolve=res);
+      let mobileAudio = null; this._mobileAudio = null;
 
       try{
         this.video.removeEventListener('ended', this._onEnded);
@@ -377,10 +460,18 @@ AFRAME.registerComponent('popup-video-hud',{
         if (!src){ this.hide(); return; }
         this.video.addEventListener('ended', this._onEnded);
         const ok = await robustPlay(this.video);
-        if (!ok){ this.hide(); return; }
+        if (!ok){ this.hide(); return done; }
+        if (isTouch){
+          try{
+            mobileAudio = new Audio(this.data.src.replace(/\.mp4$/i,'.mp3'));
+            mobileAudio.crossOrigin='anonymous'; mobileAudio.preload='auto';
+            await mobileAudio.play().catch(()=>{});
+            this._mobileAudio = mobileAudio;
+          }catch(_){}
+        }
       }catch(_){ this.hide(); }
     };
-    if (isiOS()) await enqueueMedia(run); else await run();
+    if (isTouch) await enqueueTrigger('hud', run); else await run();
   },
   onEnded(){
     this.looped++;
@@ -389,7 +480,8 @@ AFRAME.registerComponent('popup-video-hud',{
     } else { this.hide(); this.waitExit=true; }
   },
   hide(){ try{ this.video.pause(); }catch(_){}
-    popupWrap.style.display='none'; this.active=false; },
+    try{ this._mobileAudio && this._mobileAudio.pause(); }catch(_){}
+    popupWrap.style.display='none'; this.active=false; if (doneResolve){ const r=doneResolve; doneResolve=null; r(); } },
   cleanup(){ cleanupVideoEl(this.video); this.video.removeEventListener('ended', this._onEnded); }
 });
 
@@ -426,20 +518,7 @@ AFRAME.registerComponent('crumb-trail',{
 (isTouch?rig:camEl).setAttribute('crumb-trail','');
 
 /* gyros (reveal+звук) */
-AFRAME.registerComponent('reveal-node-rot-fade',{
-  schema:{ targetName:{default:''}, radius:{default:2.0}, hysteresis:{default:0.20}, spinDegPerSec:{default:60}, lifeMs:{default:15000}, fadeMs:{default:800}, soundId:{default:'gyrosAudio'} },
-  init(){ this.armed=true; this.active=false; this.targetNode=null; this.spawnTime=0; this.fading=false; this.fadeStart=0; this.soundEnt=null;
-    whenModelReady(root=>{
-      this.targetNode=findNodeByName(root,this.data.targetName);
-      if(!this.targetNode){ console.warn('Gyros node not found'); return; }
-      this.targetNode.visible=false; this.targetNode.scale.setScalar(0);
-      const wp=new THREE.Vector3(); this.targetNode.getWorldPosition(wp);
-      const s=document.createElement('a-entity');
-      s.setAttribute('position',`${wp.x} ${wp.y} ${wp.z}`);
-      s.setAttribute('sound',`src:#${this.data.soundId}; positional:true; refDistance:2; maxDistance:12; rolloffFactor:1`);
-      streetEntity.sceneEl.appendChild(s); this.soundEnt=s;
-    });
-  },
+trigger() not found  },
   tick(time,dt){
     if(!this.targetNode) return;
     const now=this.el.sceneEl.time;
@@ -468,7 +547,7 @@ AFRAME.registerComponent('reveal-node-rot-fade',{
 });
 
 /* dog (attention + звук) */
-AFRAME.registerComponent('attention-dog',{
+trigger() not foundAFRAME.registerComponent('attention-dog',{
   schema:{ radius:{default:1.0}, hysteresis:{default:0.20}, lifeMs:{default:6000}, fadeMs:{default:600} },
   init(){ this.armed=true; this.playing=false; this.dogNode=null; this.soundEl=null; this.spawnTime=0; this.fading=false; this.fadeStart=0;
     whenModelReady(root=>{
@@ -569,14 +648,17 @@ AFRAME.registerComponent('plane-video-once',{
         const ok=await robustPlay(this.video); if (!ok){ this.finish(); return; }
       }
     };
-    if (isiOS()) await enqueueMedia(run); else await run();
+    if (isTouch) await enqueueTrigger('plane', run); else await run();
   },
   finish(){
     try{ this.video?.pause(); }catch(_){}
+    try{ this._mobileAudio && this._mobileAudio.pause(); }catch(_){}
     if (this.tex){ this.tex.dispose(); this.tex=null; }
     cleanupVideoEl(this.video);
     this.node.visible=false;
     this.playing=false; this.waitExit=true;
+  }
+
   }
 });
 
@@ -701,6 +783,100 @@ window.addEventListener('keydown', e=>{
     document.querySelector('.trigger-popup')?.components['popup-video-hud']?.show();
   }
 });
+
+/* === TRAIL LINE (unified) === */
+AFRAME.registerComponent('trail-line', {
+  schema: {
+    target: {type:'selector', default:'#rig'},
+    maxPoints: {type:'int', default: 120},
+    sampleEveryMs: {type:'int', default: 150},
+    minStep: {type:'number', default: 0.2},
+    nearAlpha: {type:'number', default: 0.9},
+    farAlpha: {type:'number', default: 0.1},
+    color: {type:'color', default: '#ffffff'}
+  },
+  init(){
+    const THREE = AFRAME.THREE;
+    this.positions = new Float32Array(this.data.maxPoints * 3);
+    this.alphas = new Float32Array(this.data.maxPoints);
+    this.count = 0;
+    this.geom = new THREE.BufferGeometry();
+    this.geom.setAttribute('position', new THREE.BufferAttribute(this.positions,3));
+    this.geom.setAttribute('alpha', new THREE.BufferAttribute(this.alphas,1));
+    this.geom.setDrawRange(0,0);
+    this.mat = new THREE.LineBasicMaterial({ color: new THREE.Color(this.data.color), transparent:true, opacity:1 });
+    this.mat.onBeforeCompile = (shader)=>{
+      shader.vertexShader = shader.vertexShader.replace('void main() {', 'attribute float alpha; varying float vAlpha; void main(){ vAlpha = alpha;');
+      shader.fragmentShader = shader.fragmentShader.replace('void main() {', 'varying float vAlpha; void main(){').replace('gl_FragColor = vec4( diffuse, opacity );', 'gl_FragColor = vec4( diffuse, opacity * vAlpha );');
+      this._shader = shader;
+    };
+    this.line = new THREE.Line(this.geom, this.mat);
+    this.line.position.y = 0.02;
+    this.el.sceneEl.object3D.add(this.line);
+    this._lastSample = 0;
+    this._lastPos = new AFRAME.THREE.Vector3(NaN,NaN,NaN);
+  },
+  remove(){
+    if (this.line){
+      this.el.sceneEl.object3D.remove(this.line);
+      this.line.geometry.dispose(); this.line.material.dispose();
+    }
+  },
+  _push(v){
+    const max=this.data.maxPoints, pos=this.positions, alp=this.alphas;
+    if (this.count < max){
+      pos.set([v.x, v.y, v.z], this.count*3);
+      this.count++; this.geom.setDrawRange(0, this.count);
+    } else {
+      pos.copyWithin(0,3);
+      pos.set([v.x, v.y, v.z], (max-1)*3);
+    }
+    const len=this.count, nearA=this.data.nearAlpha, farA=this.data.farAlpha;
+    for(let i=0;i<len;i++){ const t=i/Math.max(1,len-1); alp[i]=farA*(1.0-t)+nearA*t; }
+    this.geom.attributes.position.needsUpdate = true;
+    this.geom.attributes.alpha.needsUpdate = true;
+  },
+  tick(time,dt){
+    const tgt=this.data.target || this.el;
+    if (!tgt || !tgt.object3D) return;
+    if ((time - this._lastSample) < this.data.sampleEveryMs) return;
+    const wp = new AFRAME.THREE.Vector3();
+    tgt.object3D.getWorldPosition(wp);
+    if (isNaN(this._lastPos.x) || wp.distanceTo(this._lastPos) >= this.data.minStep){
+      this._push(wp); this._lastPos.copy(wp); this._lastSample = time;
+    }
+  }
+});
+// Attach trail-line to rig (works desktop & mobile)
+try{ if (rig) rig.setAttribute('trail-line','target:#rig; maxPoints:120; sampleEveryMs:150; minStep:0.2; nearAlpha:0.9; farAlpha:0.1; color:#ffffff'); }catch(_){}
 </script>
+
+<script>
+// --- Runtime wrapper to serialize attention-dog & reveal-node-rot-fade triggers ---
+(function(){
+  function wrapTrigger(name, category){
+    try{
+      const C = AFRAME.components[name] && AFRAME.components[name].Component;
+      if (!C) return;
+      const orig = C.prototype.trigger;
+      if (typeof orig !== 'function' || orig.__wrapped) return;
+      C.prototype.trigger = async function(...args){
+        const run = async ()=>orig.apply(this, args);
+        if (isTouch) return enqueueTrigger(category, run);
+        return run();
+      };
+      C.prototype.trigger.__wrapped = true;
+    }catch(e){ console.warn('wrapTrigger failed', name, e); }
+  }
+  // Delay until components registered
+  if (document.readyState === 'complete') { doWrap(); }
+  else window.addEventListener('load', doWrap);
+  function doWrap(){
+    wrapTrigger('attention-dog','sfx');
+    wrapTrigger('reveal-node-rot-fade','sfx');
+  }
+})();
+</script>
+
 </body>
 </html>
