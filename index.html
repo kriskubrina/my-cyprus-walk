@@ -238,7 +238,7 @@ if (isTouch){
   jm.on('end', resetSticks);
   const jr=nipplejs.create({ zone:jrWrap, mode:'static', size:JOY_SIZE, position:{left:'50%',top:'50%'} , color:'white', restOpacity:0.85 });
   jr.on('move',(_,d)=>{ if(!d||!d.vector) return; rotActive=true; rotVec.x=d.vector.x; rotVec.y=d.vector.y; });
-  jr.on('end', resetSticks;
+  jr.on('end', resetSticks);
 
   AFRAME.registerComponent('mobile-camera-control',{
     schema:{ moveSpeed:{default:1.9}, rotSpeed:{default:1.9} },
