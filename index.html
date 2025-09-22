@@ -738,6 +738,7 @@ AFRAME.registerComponent('moving-object-trigger', {
     init: function () {
         this.movingObject = null;
         this.triggered = false;
+        this.mixer = null;
 
         this.spawnPoint = new THREE.Vector3(-3.789, 0, 3.585);
         this.waypoints = [
@@ -755,8 +756,17 @@ AFRAME.registerComponent('moving-object-trigger', {
         movingObjectEntity.setAttribute('rotation', '0 -90 0');
         movingObjectEntity.object3D.visible = false;
 
-        movingObjectEntity.addEventListener('model-loaded', () => {
-            movingObjectEntity.setAttribute('animation-mixer', 'clip: *; loop: repeat');
+        movingObjectEntity.addEventListener('model-loaded', (e) => {
+            try {
+                const model = e.detail.model;
+                if (model.animations && model.animations.length) {
+                    this.mixer = new THREE.AnimationMixer(model);
+                    const action = this.mixer.clipAction(model.animations[0]);
+                    action.play();
+                }
+            } catch (e) {
+                console.error('Error setting up animation mixer for moving object:', e);
+            }
         });
 
         this.el.sceneEl.appendChild(movingObjectEntity);
@@ -766,6 +776,10 @@ AFRAME.registerComponent('moving-object-trigger', {
     },
 
     tick: function (time, deltaTime) {
+        if (this.mixer) {
+            this.mixer.update(deltaTime / 1000);
+        }
+
         if (!this.movingObject) return;
 
         if (!this.triggered) {
@@ -778,7 +792,7 @@ AFRAME.registerComponent('moving-object-trigger', {
                 this.movingObject.object3D.visible = true;
                 this.targetIndex = 0; // Start moving towards the first waypoint
             }
-            return; // Don't move on the same frame it's triggered
+            return;
         }
 
         this.move(deltaTime);
