@@ -753,8 +753,12 @@ AFRAME.registerComponent('moving-object-trigger', {
         movingObjectEntity.setAttribute('gltf-model', '#movingObject');
         movingObjectEntity.setAttribute('scale', '0.4 0.4 0.4');
         movingObjectEntity.setAttribute('rotation', '0 -90 0');
-        movingObjectEntity.setAttribute('animation-mixer', 'clip: *; loop: repeat');
         movingObjectEntity.object3D.visible = false;
+
+        movingObjectEntity.addEventListener('model-loaded', () => {
+            movingObjectEntity.setAttribute('animation-mixer', 'clip: *; loop: repeat');
+        });
+
         this.el.sceneEl.appendChild(movingObjectEntity);
         this.movingObject = movingObjectEntity;
 
