@@ -11,7 +11,11 @@
     *{ -webkit-tap-highlight-color:transparent; }
     html,body{ margin:0; height:100%; background:#000; overflow:hidden; }
     a-loading-screen{ display:none !important; }
+
+    /* .a-dialog{ display:none !important; } */ /* прибиваем «левый» диалог A-Frame про гироскоп */
+=======
     .a-enter-vr-button { display: none !important; }
+
 
     #mute{
       position:fixed; left:12px; top:12px; padding:10px; border:0; border-radius:10px;
@@ -102,10 +106,7 @@
     <img id="skyTex" src="assets/images/sky.jpg" crossorigin="anonymous">
     <!-- сцена -->
     <a-asset-item id="world" src="assets/models/limassol-walk.glb"></a-asset-item>
-<<<<<<< fix-mobile-experience
     <a-asset-item id="moving-object" src="assets/models/moving.glb"></a-asset-item>
-=======
->>>>>>> main
 
     <!-- HUD-видео и общий мобильный видео-элемент для плейнов -->
     <video id="popupVideo" preload="metadata" playsinline webkit-playsinline crossorigin="anonymous"></video>
@@ -809,7 +810,6 @@ AFRAME.registerComponent('video-preloader', {
         this.triggers = toPreload.map(t => ({ el: t.el, src: t.src.replace(/\.mp4/i,'.mobile.mp4') }));
     }, {once:true});
   },
-<<<<<<< fix-mobile-experience
 
   tick: function (time, timeDelta) {
     if (!this.el.object3D.visible) { return; }
@@ -845,7 +845,7 @@ AFRAME.registerComponent('video-preloader', {
       if (playerPos.distanceTo(triggerPos) <= this.data.preloadRadius) {
         this.preloadVideo(trigger.src);
       }
->>>>>>> main
+
     }
   },
   preloadVideo: function (src) {
