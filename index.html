@@ -381,73 +381,55 @@ AFRAME.registerComponent('cassette-setup',{
 });
 document.querySelector('a-scene').setAttribute('cassette-setup','');
 
-/* ========== очередь медиа (мобилки) ========== */
-const mediaQueue = [];
-let mediaBusy=false;
-function enqueueMedia(task){ // task is (releaseCallback) => Promise<any>
-  if (!isTouch) return task(() => {});
-  return new Promise((resolve, reject) => {
-    mediaQueue.push({ task, resolve, reject });
-    pumpQueue();
-  });
-}
-function pumpQueue(){
-  if (mediaBusy || mediaQueue.length===0) return;
-  mediaBusy=true;
-  const {task, resolve, reject}=mediaQueue.shift();
-  const release = () => {
-    mediaBusy = false;
-    setTimeout(pumpQueue, 200);
-  };
-  task(release).then(resolve).catch(reject);
-}
+/* ========== Глобальный лок для медиа на мобилках ========== */
+let isMediaBusy = false;
 
 /* ========== HUD pop-up (мобилка без звука, но у cat — отдельная дорожка) ========== */
 AFRAME.registerComponent('popup-video-hud',{
   schema:{ radius:{default:2.0}, loops:{default:1}, hysteresis:{default:0.10}, side:{default:'right'}, src:{default:'assets/video/clip1.mp4'}, audio:{default:''} },
-  init(){ this.active=false; this.waitExit=false; this.looped=0; this.video=popupHud; this._onEnded=this.onEnded.bind(this); this.releaseSemaphore = null; },
+  init(){ this.active=false; this.waitExit=false; this.looped=0; this.video=popupHud; this._onEnded=this.onEnded.bind(this); },
   tick(){
+    if (isTouch && isMediaBusy) return;
     const m=(isTouch?rig:camEl).object3D.getWorldPosition(new THREE.Vector3());
     const t=this.el.object3D.getWorldPosition(new THREE.Vector3());
     const d=Math.hypot(m.x-t.x, m.z-t.z);
     if (this.waitExit && d>(this.data.radius+this.data.hysteresis)) this.waitExit=false;
     if (!this.active && !this.waitExit && d<=this.data.radius) this.show();
   },
-  show(){
+  async show(){
     if (!userMediaUnlocked){ const retry=()=>{ window.removeEventListener('touchstart', retry); this.show(); }; window.addEventListener('touchstart', retry, {once:true}); return; }
-    enqueueMedia(async (release) => {
-      this.releaseSemaphore = release;
-      this.cleanup(); this.active=true; this.looped=0;
+    if (isTouch) isMediaBusy = true;
 
-      if (this.data.side==='left'){ popupWrap.style.left='12px'; popupWrap.style.right='auto'; } else { popupWrap.style.right='12px'; popupWrap.style.left='auto'; }
-      popupWrap.style.display='block';
+    this.cleanup(); this.active=true; this.looped=0;
 
-      try{
-        this.video.removeEventListener('ended', this._onEnded);
+    if (this.data.side==='left'){ popupWrap.style.left='12px'; popupWrap.style.right='auto'; } else { popupWrap.style.right='12px'; popupWrap.style.left='auto'; }
+    popupWrap.style.display='block';
 
-        if (isTouch){
-          this.video.muted = true;
-          let src = await chooseMobileFirst(this.video, this.data.src);
-          if (!src){ this.hide(); return; }
+    try{
+      this.video.removeEventListener('ended', this._onEnded);
 
-          if (this.data.audio && this.el.components.sound){
-            pauseAmb();
-            this.el.components.sound.playSound();
-          }
+      if (isTouch){
+        this.video.muted = true;
+        let src = await chooseMobileFirst(this.video, this.data.src);
+        if (!src){ this.hide(); return; }
 
-          this.video.addEventListener('ended', this._onEnded);
-          const ok = await robustPlay(this.video);
-          if (!ok){ this.hide(); return; }
-        } else {
-          this.video.muted = false;
-          let src = await chooseMobileFirst(this.video, this.data.src);
-          if (!src){ this.hide(); return; }
-          this.video.addEventListener('ended', this._onEnded);
-          const ok = await robustPlay(this.video);
-          if (!ok){ this.hide(); return; }
+        if (this.data.audio && this.el.components.sound){
+          pauseAmb();
+          this.el.components.sound.playSound();
         }
-      }catch(_){ this.hide(); }
-    });
+
+        this.video.addEventListener('ended', this._onEnded);
+        const ok = await robustPlay(this.video);
+        if (!ok){ this.hide(); return; }
+      } else {
+        this.video.muted = false;
+        let src = await chooseMobileFirst(this.video, this.data.src);
+        if (!src){ this.hide(); return; }
+        this.video.addEventListener('ended', this._onEnded);
+        const ok = await robustPlay(this.video);
+        if (!ok){ this.hide(); return; }
+      }
+    }catch(_){ this.hide(); }
   },
   onEnded(){
     this.looped++;
@@ -465,7 +447,7 @@ AFRAME.registerComponent('popup-video-hud',{
       this.el.components.sound.stopSound();
       resumeAmb();
     }
-    if (this.releaseSemaphore) { this.releaseSemaphore(); this.releaseSemaphore = null; }
+    if (isTouch) isMediaBusy = false;
     popupWrap.style.display='none'; this.active=false;
   },
   cleanup(){
@@ -507,7 +489,7 @@ AFRAME.registerComponent('crumb-trail',{
 /* ========== gyros (reveal+звук) ========== */
 AFRAME.registerComponent('reveal-node-rot-fade',{
   schema:{ targetName:{default:''}, radius:{default:2.0}, hysteresis:{default:0.20}, spinDegPerSec:{default:60}, lifeMs:{default:15000}, fadeMs:{default:800}, soundId:{default:'gyrosAudio'} },
-  init(){ this.armed=true; this.active=false; this.targetNode=null; this.spawnTime=0; this.fading=false; this.fadeStart=0; this.soundEnt=null; this.releaseSemaphore=null;
+  init(){ this.armed=true; this.active=false; this.targetNode=null; this.spawnTime=0; this.fading=false; this.fadeStart=0; this.soundEnt=null;
     whenModelReady(root=>{
       this.targetNode=findNodeByName(root,this.data.targetName);
       if(!this.targetNode){ console.warn('Gyros node not found'); return; }
@@ -527,19 +509,13 @@ AFRAME.registerComponent('reveal-node-rot-fade',{
     const d=Math.hypot(m.x-t.x, m.z-t.z);
 
     if (this.armed && d<=this.data.radius && !this.active){
-      this.armed = false;
-      enqueueMedia((release) => {
-        this.releaseSemaphore = release;
-        this.active = true;
-        this.fading = false;
-        this.spawnTime = this.el.sceneEl.time;
-        this.targetNode.visible = true;
-        this.targetNode.scale.setScalar(1);
-        resumeSceneAudioContext();
-        try { this.soundEnt?.components.sound.stopSound(); } catch(_) {}
-        try { this.soundEnt?.components.sound.playSound(); } catch(_) {}
-        return Promise.resolve();
-      });
+      if (isTouch && isMediaBusy) return;
+      if (isTouch) isMediaBusy = true;
+      this.active=true; this.fading=false; this.fadeStart=0; this.spawnTime=now;
+      this.targetNode.visible=true; this.targetNode.scale.setScalar(1);
+      resumeSceneAudioContext();
+      try{ this.soundEnt?.components.sound.stopSound(); }catch(_){}
+      try{ this.soundEnt?.components.sound.playSound(); }catch(_){ setTimeout(()=>this.soundEnt?.components.sound.playSound(), 140); }
     } else if (!this.armed && d>(this.data.radius+this.data.hysteresis) && !this.active){ this.armed=true; }
 
     if (this.active){
@@ -551,7 +527,7 @@ AFRAME.registerComponent('reveal-node-rot-fade',{
         this.targetNode.scale.setScalar(Math.max(0,s));
         if (k>=1){
           this.targetNode.visible=false; this.active=false; this.fading=false;
-          if (this.releaseSemaphore) { this.releaseSemaphore(); this.releaseSemaphore = null; }
+          if (isTouch) isMediaBusy = false;
         }
       }
   } }
@@ -560,7 +536,7 @@ AFRAME.registerComponent('reveal-node-rot-fade',{
 /* ========== dog (attention + позиционный звук) ========== */
 AFRAME.registerComponent('attention-dog',{
   schema:{ radius:{default:1.0}, hysteresis:{default:0.20}, lifeMs:{default:6000}, fadeMs:{default:600} },
-  init(){ this.armed=true; this.playing=false; this.dogNode=null; this.soundEl=null; this.spawnTime=0; this.fading=false; this.fadeStart=0; this.releaseSemaphore=null;
+  init(){ this.armed=true; this.playing=false; this.dogNode=null; this.soundEl=null; this.spawnTime=0; this.fading=false; this.fadeStart=0;
     whenModelReady(root=>{
       this.dogNode=findNodeByName(root,'dog'); if(!this.dogNode){ console.warn('dog node not found'); return; }
       this.dogNode.visible=false; this.dogNode.scale.setScalar(0);
@@ -588,21 +564,19 @@ AFRAME.registerComponent('attention-dog',{
         this.dogNode.scale.setScalar(Math.max(0,s));
         if (k>=1){
           this.dogNode.visible=false; this.playing=false; this.fading=false;
-          if (this.releaseSemaphore) { this.releaseSemaphore(); this.releaseSemaphore = null; }
+          if (isTouch) isMediaBusy = false;
         }
       }
     }
   },
   trigger(){
-    enqueueMedia((release) => {
-      this.releaseSemaphore = release;
-      resumeSceneAudioContext();
-      this.playing=true; this.spawnTime=this.el.sceneEl.time; this.fading=false;
-      this.dogNode.visible=true; this.dogNode.scale.setScalar(1);
-      try{ this.soundEl?.components.sound.stopSound(); }catch(_){}
-      try{ this.soundEl?.components.sound.playSound(); }catch(_){ setTimeout(()=>this.soundEl?.components.sound.playSound(),140); }
-      return Promise.resolve();
-    });
+    if (isTouch && isMediaBusy) return;
+    if (isTouch) isMediaBusy = true;
+    resumeSceneAudioContext();
+    this.playing=true; this.spawnTime=this.el.sceneEl.time; this.fading=false;
+    this.dogNode.visible=true; this.dogNode.scale.setScalar(1);
+    try{ this.soundEl?.components.sound.stopSound(); }catch(_){}
+    try{ this.soundEl?.components.sound.playSound(); }catch(_){ setTimeout(()=>this.soundEl?.components.sound.playSound(),140); }
   }
 });
 
@@ -611,68 +585,68 @@ AFRAME.registerComponent('plane-video-once',{
   schema:{ nodeName:{default:''}, videoSrc:{default:''}, audio:{default:''}, radius:{default:2.5}, hysteresis:{default:0.10} },
   init(){
     this.node=null; this.ready=false; this.playing=false; this.waitExit=false;
-    this.video=null; this.tex=null; this.releaseSemaphore = null;
+    this.video=null; this.tex=null;
     whenModelReady(root=>{ this.node=findNodeByName(root, this.data.nodeName); if(!this.node) return; this.node.visible=false; this.ready=true; });
   },
   tick(){
     if(!this.ready||!this.node) return;
+    if (isTouch && isMediaBusy) return;
     const m=(isTouch?rig:camEl).object3D.getWorldPosition(new THREE.Vector3());
     const t=this.node.getWorldPosition(new THREE.Vector3());
     const d=Math.hypot(m.x-t.x, m.z-t.z);
     if(!this.playing && !this.waitExit && d<=this.data.radius){ this.startVideo(); }
     else if (this.waitExit && d>(this.data.radius+this.data.hysteresis)){ this.waitExit=false; }
   },
-  startVideo(){
+  async startVideo(){
     if (!userMediaUnlocked){ const retry=()=>{ window.removeEventListener('touchstart', retry); this.startVideo(); }; window.addEventListener('touchstart', retry, {once:true}); return; }
-    enqueueMedia(async (release)=>{
-      this.releaseSemaphore = release;
-      this.playing=true; this.node.visible=true;
+    if (isTouch) isMediaBusy = true;
 
-      const makeMaterial = (tex)=>{ const m = new THREE.MeshBasicMaterial({ map:tex, side:THREE.DoubleSide }); m.toneMapped=false; return m; };
+    this.playing=true; this.node.visible=true;
 
-      if (isTouch){
-        this.video = planeVideoMobile; try{ this.video.pause(); }catch(_){}
-        const src = await chooseMobileFirst(this.video, this.data.videoSrc);
-        if (!src){ this.finish(); return; }
+    const makeMaterial = (tex)=>{ const m = new THREE.MeshBasicMaterial({ map:tex, side:THREE.DoubleSide }); m.toneMapped=false; return m; };
 
-        if (this.data.audio && this.el.components.sound){
-          pauseAmb();
-          this.el.components.sound.playSound();
-        }
+    if (isTouch){
+      this.video = planeVideoMobile; try{ this.video.pause(); }catch(_){}
+      const src = await chooseMobileFirst(this.video, this.data.videoSrc);
+      if (!src){ this.finish(); return; }
 
-        this.video.addEventListener('ended', ()=>this.finish(), {once:true});
-        const ok = await robustPlay(this.video);
-        if (!ok){ this.finish(); return; }
-
-        this.tex = new THREE.VideoTexture(this.video);
-        if (THREE.SRGBColorSpace) this.tex.colorSpace = THREE.SRGBColorSpace;
-        this.tex.minFilter=THREE.LinearFilter; this.tex.magFilter=THREE.LinearFilter; this.tex.needsUpdate=true;
-
-        const mat = makeMaterial(this.tex);
-        const meshes=[]; this.node.traverse(n=>{ if(n.isMesh) meshes.push(n); });
-        meshes.forEach(n=>{ n.material=mat; if (n.material.map){ n.material.map.repeat.x=-1; n.material.map.offset.x=1; n.material.map.needsUpdate=true; } });
-
-        setTimeout(()=>{ if (this.playing) this.finish(); }, 60000);
-      } else {
-        this.video = document.createElement('video');
-        this.video.playsInline=true; this.video.preload='metadata'; this.video.crossOrigin='anonymous';
-        this.video.loop=false; this.video.muted=false;
-
-        let src = await chooseMobileFirst(this.video, this.data.videoSrc);
-        if (!src){ this.finish(); return; }
-
-        this.tex = new THREE.VideoTexture(this.video);
-        if (THREE.SRGBColorSpace) this.tex.colorSpace = THREE.SRGBColorSpace;
-        this.tex.minFilter=THREE.LinearFilter; this.tex.magFilter=THREE.LinearFilter; this.tex.needsUpdate=true;
-
-        const mat = makeMaterial(this.tex);
-        const meshes=[]; this.node.traverse(n=>{ if(n.isMesh) meshes.push(n); });
-        meshes.forEach(n=>{ n.material=mat; if (n.material.map){ n.material.map.repeat.x=-1; n.material.map.offset.x=1; n.material.map.needsUpdate=true; } });
-
-        this.video.addEventListener('ended', ()=>this.finish(), {once:true});
-        const ok=await robustPlay(this.video); if (!ok){ this.finish(); return; }
+      if (this.data.audio && this.el.components.sound){
+        pauseAmb();
+        this.el.components.sound.playSound();
       }
-    });
+
+      this.video.addEventListener('ended', ()=>this.finish(), {once:true});
+      const ok = await robustPlay(this.video);
+      if (!ok){ this.finish(); return; }
+
+      this.tex = new THREE.VideoTexture(this.video);
+      if (THREE.SRGBColorSpace) this.tex.colorSpace = THREE.SRGBColorSpace;
+      this.tex.minFilter=THREE.LinearFilter; this.tex.magFilter=THREE.LinearFilter; this.tex.needsUpdate=true;
+
+      const mat = makeMaterial(this.tex);
+      const meshes=[]; this.node.traverse(n=>{ if(n.isMesh) meshes.push(n); });
+      meshes.forEach(n=>{ n.material=mat; if (n.material.map){ n.material.map.repeat.x=-1; n.material.map.offset.x=1; n.material.map.needsUpdate=true; } });
+
+      setTimeout(()=>{ if (this.playing) this.finish(); }, 60000);
+    } else {
+      this.video = document.createElement('video');
+      this.video.playsInline=true; this.video.preload='metadata'; this.video.crossOrigin='anonymous';
+      this.video.loop=false; this.video.muted=false;
+
+      let src = await chooseMobileFirst(this.video, this.data.videoSrc);
+      if (!src){ this.finish(); return; }
+
+      this.tex = new THREE.VideoTexture(this.video);
+      if (THREE.SRGBColorSpace) this.tex.colorSpace = THREE.SRGBColorSpace;
+      this.tex.minFilter=THREE.LinearFilter; this.tex.magFilter=THREE.LinearFilter; this.tex.needsUpdate=true;
+
+      const mat = makeMaterial(this.tex);
+      const meshes=[]; this.node.traverse(n=>{ if(n.isMesh) meshes.push(n); });
+      meshes.forEach(n=>{ n.material=mat; if (n.material.map){ n.material.map.repeat.x=-1; n.material.map.offset.x=1; n.material.map.needsUpdate=true; } });
+
+      this.video.addEventListener('ended', ()=>this.finish(), {once:true});
+      const ok=await robustPlay(this.video); if (!ok){ this.finish(); return; }
+    }
   },
   finish(){
     try{ this.video?.pause(); }catch(_){}
@@ -680,7 +654,7 @@ AFRAME.registerComponent('plane-video-once',{
       this.el.components.sound.stopSound();
       resumeAmb();
     }
-    if (this.releaseSemaphore) { this.releaseSemaphore(); this.releaseSemaphore = null; }
+    if (isTouch) isMediaBusy = false;
     if (this.tex){ this.tex.dispose(); this.tex=null; }
     cleanupVideoEl(this.video);
     this.node.visible=false;
