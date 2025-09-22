@@ -102,6 +102,10 @@
     <img id="skyTex" src="assets/images/sky.jpg" crossorigin="anonymous">
     <!-- сцена -->
     <a-asset-item id="world" src="assets/models/limassol-walk.glb"></a-asset-item>
+<<<<<<< fix-mobile-experience
+    <a-asset-item id="moving-object" src="assets/models/moving.glb"></a-asset-item>
+=======
+>>>>>>> main
 
     <!-- HUD-видео и общий мобильный видео-элемент для плейнов -->
     <video id="popupVideo" preload="metadata" playsinline webkit-playsinline crossorigin="anonymous"></video>
@@ -805,6 +809,32 @@ AFRAME.registerComponent('video-preloader', {
         this.triggers = toPreload.map(t => ({ el: t.el, src: t.src.replace(/\.mp4/i,'.mobile.mp4') }));
     }, {once:true});
   },
+<<<<<<< fix-mobile-experience
+
+  tick: function (time, timeDelta) {
+    if (!this.el.object3D.visible) { return; }
+
+    const currentPosition = this.el.object3D.position;
+    const distanceToTarget = currentPosition.distanceTo(this.targetWaypoint);
+    const moveDistance = this.data.speed * (timeDelta / 1000);
+
+    // Orient the object to face the direction of movement
+    this.el.object3D.lookAt(this.targetWaypoint);
+    // I will keep the 90 degree rotation as user requested it
+    this.el.object3D.rotation.y -= Math.PI / 2;
+
+
+    if (moveDistance >= distanceToTarget) {
+      // Reached waypoint
+      currentPosition.copy(this.targetWaypoint);
+      this.currentWaypointIndex = (this.currentWaypointIndex + 1) % this.waypoints.length;
+      this.targetWaypoint = this.waypoints[this.currentWaypointIndex];
+
+    } else {
+      // Move towards waypoint
+      const direction = this.targetWaypoint.clone().sub(currentPosition).normalize();
+      this.el.object3D.position.add(direction.multiplyScalar(moveDistance));
+=======
   tick: function() {
     const player = this.el.camera?.el || this.el.querySelector('#player');
     if (!player || this.triggers.length === 0) return;
@@ -815,6 +845,7 @@ AFRAME.registerComponent('video-preloader', {
       if (playerPos.distanceTo(triggerPos) <= this.data.preloadRadius) {
         this.preloadVideo(trigger.src);
       }
+>>>>>>> main
     }
   },
   preloadVideo: function (src) {
