@@ -134,6 +134,7 @@
     </a-entity>
   </a-entity>
 
+  <a-entity id="moving-object" moving-object-logic gltf-model="#movingObject" scale="0.4 0.4 0.4" rotation="0 -90 0"></a-entity>
   <a-entity id="streetEntity" gltf-model="#world" position="0 0 0"></a-entity>
 </a-scene>
 
@@ -730,69 +731,29 @@ AFRAME.registerComponent('clamp-rect',{
 document.querySelector('a-scene').setAttribute('clamp-rect','minX:-25; maxX:25; minZ:-10; maxZ:10');
 
 /* ========== moving object ========== */
-AFRAME.registerComponent('moving-object-trigger', {
+AFRAME.registerComponent('moving-object-logic', {
     schema: {
-        radius: { default: 1.0 },
+        triggerPosition: { type: 'vec3', default: { x: -2.862, y: 1.6, z: 3.478 } },
+        radius: { default: 1.0 }
     },
 
     init: function () {
-        this.movingObject = null;
         this.triggered = false;
         this.mixer = null;
-
-        this.spawnPoint = new THREE.Vector3(-3.789, 0, 3.585);
+        const spawnPoint = new THREE.Vector3(-3.789, 0, 3.585);
         this.waypoints = [
             new THREE.Vector3(-16.632, 0, 4.002),
             new THREE.Vector3(-17.379, 0, -0.914),
             new THREE.Vector3(15.093, 0, -4.741),
             new THREE.Vector3(15.820, 0, -0.646)
         ];
-        this.speed = 1; // 1 meter per second
-        this.targetIndex = -1; // -1 means it's at spawn, and will move to waypoints[0]
-    },
+        this.speed = 1;
+        this.targetIndex = -1;
 
-    tick: function (time, deltaTime) {
-        // DIAGNOSTIC: Animation logic disabled for primitive shape.
-        /*
-        if (this.mixer) {
-            this.mixer.update(deltaTime / 1000);
-        }
-        */
+        this.el.object3D.position.copy(spawnPoint);
+        this.el.setAttribute('visible', false);
 
-        if (!this.triggered) {
-            const playerPos = (isTouch ? rig : camEl).object3D.getWorldPosition(new THREE.Vector3());
-            const triggerPos = this.el.object3D.getWorldPosition(new THREE.Vector3());
-            const distance = playerPos.distanceTo(triggerPos);
-
-            if (distance <= this.data.radius) {
-                this.triggered = true;
-                this.spawnObject();
-            }
-            // On the frame it's triggered, the object doesn't exist yet.
-            // Return to avoid trying to move it.
-            return;
-        }
-
-        if (this.movingObject) {
-            this.move(deltaTime);
-        }
-    },
-
-    spawnObject: function() {
-        const movingObjectEntity = document.createElement('a-entity');
-
-        // DIAGNOSTIC: Use a simple box instead of the complex model.
-        // movingObjectEntity.setAttribute('gltf-model', '#movingObject');
-        movingObjectEntity.setAttribute('geometry', 'primitive: box; width: 0.5; height: 0.5; depth: 0.5');
-        movingObjectEntity.setAttribute('material', 'color: red');
-
-        movingObjectEntity.setAttribute('scale', '0.4 0.4 0.4');
-        movingObjectEntity.setAttribute('rotation', '0 -90 0');
-        movingObjectEntity.setAttribute('position', `${this.spawnPoint.x} ${this.spawnPoint.y} ${this.spawnPoint.z}`);
-
-        // DIAGNOSTIC: Animation logic disabled for primitive shape.
-        /*
-        movingObjectEntity.addEventListener('model-loaded', (e) => {
+        this.el.addEventListener('model-loaded', (e) => {
             try {
                 const model = e.detail.model;
                 if (model.animations && model.animations.length) {
@@ -803,42 +764,45 @@ AFRAME.registerComponent('moving-object-trigger', {
             } catch (err) {
                 console.error('Error setting up animation mixer:', err);
             }
-            // Model is loaded, now we can make it visible and start moving.
-            this.movingObject.setAttribute('visible', true);
-            this.targetIndex = 0;
         }, { once: true });
-        */
+    },
 
-        this.el.sceneEl.appendChild(movingObjectEntity);
-        this.movingObject = movingObjectEntity;
+    tick: function (time, deltaTime) {
+        if (this.mixer) {
+            this.mixer.update(deltaTime / 1000);
+        }
 
-        // For a primitive, we can make it visible and start moving immediately.
-        this.movingObject.setAttribute('visible', true);
-        this.targetIndex = 0;
+        if (!this.triggered) {
+            const playerPos = (isTouch ? rig : camEl).object3D.getWorldPosition(new THREE.Vector3());
+            const distance = playerPos.distanceTo(this.data.triggerPosition);
+            if (distance <= this.data.radius) {
+                this.triggered = true;
+                this.el.setAttribute('visible', true);
+                this.targetIndex = 0;
+            }
+            return;
+        }
+
+        this.move(deltaTime);
     },
 
     move: function (deltaTime) {
-        if (!this.movingObject || this.targetIndex === -1) return;
+        if (this.targetIndex === -1) return;
 
         const targetPosition = this.waypoints[this.targetIndex];
-        const currentPosition = this.movingObject.object3D.position;
+        const currentPosition = this.el.object3D.position;
         const distanceToTarget = currentPosition.distanceTo(targetPosition);
 
-        // When it's close enough to the target, switch to the next one
         if (distanceToTarget < 0.1) {
-            // Rotate 90 degrees clockwise on Y axis
             const yRotation = new THREE.Euler(0, -Math.PI / 2, 0);
-            this.movingObject.object3D.quaternion.multiply(new THREE.Quaternion().setFromEuler(yRotation));
-
-            // Move to the next waypoint in the loop
+            this.el.object3D.quaternion.multiply(new THREE.Quaternion().setFromEuler(yRotation));
             this.targetIndex = (this.targetIndex + 1) % this.waypoints.length;
         }
 
-        // Move towards the current target
         const nextTargetPosition = this.waypoints[this.targetIndex];
         const direction = nextTargetPosition.clone().sub(currentPosition).normalize();
         const moveDistance = this.speed * (deltaTime / 1000);
-        this.movingObject.object3D.position.add(direction.multiplyScalar(moveDistance));
+        this.el.object3D.position.add(direction.multiplyScalar(moveDistance));
     }
 });
 
@@ -885,11 +849,10 @@ AFRAME.registerComponent('trigger-director',{
         }
       });
 
-      const movingObjectTrigger = document.createElement('a-entity');
-      movingObjectTrigger.classList.add('trigger-moving');
-      movingObjectTrigger.setAttribute('position', '-2.862 1.6 3.478');
-      movingObjectTrigger.setAttribute('moving-object-trigger', '');
-      scene.appendChild(movingObjectTrigger);
+      const movingObjectRadarMarker = document.createElement('a-entity');
+      movingObjectRadarMarker.classList.add('trigger-moving');
+      movingObjectRadarMarker.setAttribute('position', '-2.862 1.6 3.478');
+      scene.appendChild(movingObjectRadarMarker);
     });
   }
 });
