@@ -95,7 +95,7 @@
   loading-screen="enabled:false"
   device-orientation-permission-ui="enabled:true"
   vr-mode-ui="enabled:false"
->
+  video-preloader>
   <a-assets>
     <!-- небо -->
     <img id="skyTex" src="assets/images/sky.jpg" crossorigin="anonymous">
@@ -174,8 +174,25 @@ function findNodeByName(root,name){
 
 /* ========== загрузочный экран ========== */
 function hideBoot(){ boot.style.display='none'; }
-streetEntity.addEventListener('model-loaded', hideBoot, {once:true});
-setTimeout(hideBoot, 10000);
+
+const modelPromise = new Promise(resolve => {
+  const run = () => { const root = streetEntity.getObject3D('mesh'); if (root) resolve(); };
+  if (streetEntity.hasLoaded && streetEntity.getObject3D('mesh')) run();
+  else streetEntity.addEventListener('model-loaded', run, {once:true});
+});
+
+const skyTex = document.getElementById('skyTex');
+const skyPromise = new Promise(resolve => {
+  if (skyTex.complete) return resolve();
+  skyTex.addEventListener('load', resolve, {once:true});
+});
+
+const ambAudioEl = document.getElementById('amb');
+const ambPromise = new Promise(resolve => {
+  fetch(ambAudioEl.src).then(resolve).catch(resolve);
+});
+
+Promise.all([modelPromise, skyPromise, ambPromise]).then(hideBoot);
 
 /* ========== статус-позиция ========== */
 function fmt(n){return Number(n).toFixed(3)}
@@ -289,16 +306,19 @@ async function robustPlay(video, {wait=260}={}){
   return !video.paused;
 }
 async function chooseMobileFirst(videoEl, baseSrc){
-  const mobileSrc = baseSrc.replace(/\.mp4$/i,'.mobile.mp4');
+  const preloader = document.querySelector('a-scene')?.components['video-preloader'];
   if (isTouch) {
     try {
-      videoEl.src = mobileSrc; videoEl.load(); videoEl.currentTime=0.05;
+      const mobileSrc = preloader ? preloader.getPreloadedSrc(baseSrc) : baseSrc.replace(/\.mp4$/i,'.mobile.mp4');
+      videoEl.src = mobileSrc;
+      videoEl.load(); videoEl.currentTime=0.05;
       const ok = await robustPlay(videoEl);
       if (ok) return mobileSrc;
     } catch(_){}
     return null;
   }
   try{
+    const mobileSrc = baseSrc.replace(/\.mp4$/i,'.mobile.mp4');
     videoEl.src = mobileSrc; videoEl.load(); videoEl.currentTime=0.05;
     const ok = await robustPlay(videoEl);
     if (ok) return mobileSrc;
@@ -364,11 +384,11 @@ AFRAME.registerComponent('cassette-setup',{
 });
 document.querySelector('a-scene').setAttribute('cassette-setup','');
 
-/* ========== очередь медиа (iOS) ========== */
+/* ========== очередь медиа (мобилки) ========== */
 const mediaQueue = [];
 let mediaBusy=false;
 async function enqueueMedia(task){
-  if (!isiOS()) return task(); // не iOS – сразу
+  if (!isTouch) return task(); // не мобилка – сразу
   return new Promise((resolve)=>{ mediaQueue.push({task,resolve}); pumpQueue(); });
 }
 async function pumpQueue(){
@@ -773,6 +793,60 @@ document.querySelector('a-scene').setAttribute('trigger-director','');
 window.addEventListener('keydown', e=>{
   if (!isTouch && e.key.toLowerCase()==='p'){
     document.querySelector('.trigger-popup')?.components['popup-video-hud']?.show();
+  }
+});
+
+AFRAME.registerComponent('video-preloader', {
+  schema: {
+    preloadRadius: { default: 15 },
+    throttle: { default: 1000 }
+  },
+  init: function () {
+    this.triggers = [];
+    this.preloaded = new Set();
+    this.cache = new Map();
+    const scene = this.el;
+    scene.addEventListener('loaded', () => {
+        const popupTriggers = Array.from(scene.querySelectorAll('.trigger-popup'));
+        const planeTriggers = Array.from(scene.querySelectorAll('.trigger-plane'));
+        const toPreload = [];
+        popupTriggers.forEach(el => {
+            const data = el.components['popup-video-hud']?.data;
+            if (data && data.src) toPreload.push({ el: el, src: data.src });
+        });
+        planeTriggers.forEach(el => {
+            const data = el.components['plane-video-once']?.data;
+            if (data && data.videoSrc) toPreload.push({ el: el, src: data.videoSrc });
+        });
+        this.triggers = toPreload.map(t => ({ el: t.el, src: t.src.replace(/\.mp4/i,'.mobile.mp4') }));
+    }, {once:true});
+  },
+  tick: function() {
+    const player = this.el.camera?.el || this.el.querySelector('#player');
+    if (!player || this.triggers.length === 0) return;
+    const playerPos = player.object3D.getWorldPosition(new THREE.Vector3());
+    for (const trigger of this.triggers) {
+      if (this.preloaded.has(trigger.src)) continue;
+      const triggerPos = trigger.el.object3D.getWorldPosition(new THREE.Vector3());
+      if (playerPos.distanceTo(triggerPos) <= this.data.preloadRadius) {
+        this.preloadVideo(trigger.src);
+      }
+    }
+  },
+  preloadVideo: function (src) {
+    if (this.preloaded.has(src)) return;
+    this.preloaded.add(src);
+    fetch(src)
+      .then(response => response.blob())
+      .then(blob => {
+        const blobUrl = URL.createObjectURL(blob);
+        this.cache.set(src, blobUrl);
+      })
+      .catch(() => { this.preloaded.delete(src); });
+  },
+  getPreloadedSrc: function (originalSrc) {
+    const mobileSrc = originalSrc.replace(/\.mp4$/i,'.mobile.mp4');
+    return this.cache.get(mobileSrc) || mobileSrc;
   }
 });
 </script>
