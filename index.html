@@ -751,6 +751,9 @@ AFRAME.registerComponent('moving-object-trigger', {
 
         const movingObjectEntity = document.createElement('a-entity');
         movingObjectEntity.setAttribute('gltf-model', '#movingObject');
+        movingObjectEntity.setAttribute('scale', '0.4 0.4 0.4');
+        movingObjectEntity.setAttribute('rotation', '0 -90 0');
+        movingObjectEntity.setAttribute('animation-mixer', 'clip: *; loop: repeat');
         movingObjectEntity.object3D.visible = false;
         this.el.sceneEl.appendChild(movingObjectEntity);
         this.movingObject = movingObjectEntity;
