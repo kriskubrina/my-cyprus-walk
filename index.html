@@ -287,7 +287,7 @@ if (isTouch){
       }
     }
   });
-  camEl.setAttribute('mobile-camera-control','moveSpeed:1.9; rotSpeed:1.9');
+  camEl.setAttribute('mobile-camera-control','moveSpeed:2.85; rotSpeed:1.9');
 }
 const moverEl = isTouch ? rig : camEl;
 
@@ -515,17 +515,22 @@ AFRAME.registerComponent('reveal-node-rot-fade',{
   },
   tick(time,dt){
     if(!this.targetNode) return;
-    const now=this.el.sceneEl.time;
     const m=(isTouch?rig:camEl).object3D.getWorldPosition(new THREE.Vector3());
     const t=this.el.object3D.getWorldPosition(new THREE.Vector3());
     const d=Math.hypot(m.x-t.x, m.z-t.z);
 
     if (this.armed && d<=this.data.radius && !this.active){
-      this.active=true; this.fading=false; this.fadeStart=0; this.spawnTime=now;
-      this.targetNode.visible=true; this.targetNode.scale.setScalar(1);
-      resumeSceneAudioContext();
-      try{ this.soundEnt?.components.sound.stopSound(); }catch(_){}
-      try{ this.soundEnt?.components.sound.playSound(); }catch(_){ setTimeout(()=>this.soundEnt?.components.sound.playSound(), 140); }
+      this.armed = false;
+      enqueueMedia(async () => {
+        this.active = true;
+        this.fading = false;
+        this.spawnTime = this.el.sceneEl.time;
+        this.targetNode.visible = true;
+        this.targetNode.scale.setScalar(1);
+        resumeSceneAudioContext();
+        try { this.soundEnt?.components.sound.stopSound(); } catch(_) {}
+        try { this.soundEnt?.components.sound.playSound(); } catch(_) {}
+      });
     } else if (!this.armed && d>(this.data.radius+this.data.hysteresis) && !this.active){ this.armed=true; }
 
     if (this.active){
@@ -574,11 +579,13 @@ AFRAME.registerComponent('attention-dog',{
     }
   },
   trigger(){
-    resumeSceneAudioContext();
-    this.playing=true; this.spawnTime=this.el.sceneEl.time; this.fading=false;
-    this.dogNode.visible=true; this.dogNode.scale.setScalar(1);
-    try{ this.soundEl?.components.sound.stopSound(); }catch(_){}
-    try{ this.soundEl?.components.sound.playSound(); }catch(_){ setTimeout(()=>this.soundEl?.components.sound.playSound(),140); }
+    enqueueMedia(async () => {
+      resumeSceneAudioContext();
+      this.playing=true; this.spawnTime=this.el.sceneEl.time; this.fading=false;
+      this.dogNode.visible=true; this.dogNode.scale.setScalar(1);
+      try{ this.soundEl?.components.sound.stopSound(); }catch(_){}
+      try{ this.soundEl?.components.sound.playSound(); }catch(_){ setTimeout(()=>this.soundEl?.components.sound.playSound(),140); }
+    });
   }
 });
 
