@@ -11,7 +11,6 @@
     *{ -webkit-tap-highlight-color:transparent; }
     html,body{ margin:0; height:100%; background:#000; overflow:hidden; }
     a-loading-screen{ display:none !important; }
-    .a-dialog{ display:none !important; } /* прибиваем «левый» диалог A-Frame про гироскоп */
 
     #mute{
       position:fixed; left:12px; top:12px; padding:10px; border:0; border-radius:10px;
@@ -91,7 +90,8 @@
 <div id="cassette-ring"></div>
 
 <a-scene
-  renderer="colorManagement:true; physicallyCorrectLights:false; antialias:true; precision:mediump; powerPreference:high-performance"
+  embedded
+  renderer="colorManagement:true; physicallyCorrectLights:false; antialias:true; precision:mediump; powerPreference:high-performance; fullscreen: false"
   loading-screen="enabled:false"
   device-orientation-permission-ui="enabled:true"
   vr-mode-ui="enabled:false"
@@ -110,8 +110,13 @@
     <audio id="amb"        src="assets/audio/Analog_Mannequin%20Milk%20Cassette%20X.mp3%20-%20Demo.mp3" preload="auto" crossorigin="anonymous"></audio>
     <audio id="dogAudio"   src="assets/audio/dog.mp3"   preload="auto" crossorigin="anonymous"></audio>
     <audio id="gyrosAudio" src="assets/audio/gyros.mp3" preload="auto" crossorigin="anonymous"></audio>
-    <!-- отдельный звук для кошки (только мобилка) -->
-    <audio id="clip1Audio" src="assets/audio/popup/clip1.mp3" preload="auto" crossorigin="anonymous"></audio>
+    <audio id="clip1Audio" src="assets/audio/clip1.mp3" preload="auto" crossorigin="anonymous"></audio>
+    <audio id="petalsAudio" src="assets/audio/petals.mp3" preload="auto" crossorigin="anonymous"></audio>
+    <audio id="pharmaAudio" src="assets/audio/pharma.mp3" preload="auto" crossorigin="anonymous"></audio>
+    <audio id="treeAudio"   src="assets/audio/tree.mp3"   preload="auto" crossorigin="anonymous"></audio>
+    <audio id="sunset2Audio" src="assets/audio/sunset2.mp3" preload="auto" crossorigin="anonymous"></audio>
+    <audio id="sunset3Audio" src="assets/audio/sunset3.mp3" preload="auto" crossorigin="anonymous"></audio>
+    <audio id="wavesAudio"  src="assets/audio/waves.mp3"  preload="auto" crossorigin="anonymous"></audio>
   </a-assets>
 
   <a-sky src="#skyTex" rotation="0 -90 0"></a-sky>
@@ -194,6 +199,10 @@ async function startBackgroundFrom9s(){
 function toggleAmbMute(){ ambMuted = !ambMuted; if (ambGain) ambGain.gain.value = ambMuted?0:1; muteBtn.textContent = ambMuted ? '🔇' : '🔊'; }
 muteBtn.addEventListener('click', toggleAmbMute);
 
+let ambPausedForMedia = false;
+function pauseAmb() { if (ambGain && !ambPausedForMedia) { ambGain.gain.value = 0; ambPausedForMedia = true; } }
+function resumeAmb() { if (ambGain && ambPausedForMedia) { if (!ambMuted) ambGain.gain.value = 1; ambPausedForMedia = false; } }
+
 /* ========== резюмим оба контекста по первому жесту ========== */
 let userMediaUnlocked=false;
 function resumeSceneAudioContext(){
@@ -269,20 +278,26 @@ function cleanupVideoEl(v){ if(!v) return; try{ v.pause(); }catch(_){}
   try{ v.removeAttribute('src'); v.src=''; }catch(_){}
   try{ v.load(); }catch(_){}
 }
-async function robustPlay(video, {tries=10, step=0.05, wait=260}={}){
-  let ok=false;
-  for(let i=0;i<tries;i++){
-    try{ video.currentTime=Math.max(0,(video.currentTime||0)+step);}catch(_){}
-    try{
-      const p=video.play(); if (p) await p;
-      const t0=video.currentTime; await new Promise(r=>setTimeout(r,wait)); const t1=video.currentTime;
-      if (t1>t0+0.0005){ ok=true; break; }
-    }catch(_){}
+async function robustPlay(video, {wait=260}={}){
+  try {
+    await video.play();
+  } catch (e) {
+    console.warn("Video play failed:", e);
+    return false;
   }
-  return ok;
+  await new Promise(r => setTimeout(r, wait));
+  return !video.paused;
 }
 async function chooseMobileFirst(videoEl, baseSrc){
   const mobileSrc = baseSrc.replace(/\.mp4$/i,'.mobile.mp4');
+  if (isTouch) {
+    try {
+      videoEl.src = mobileSrc; videoEl.load(); videoEl.currentTime=0.05;
+      const ok = await robustPlay(videoEl);
+      if (ok) return mobileSrc;
+    } catch(_){}
+    return null;
+  }
   try{
     videoEl.src = mobileSrc; videoEl.load(); videoEl.currentTime=0.05;
     const ok = await robustPlay(videoEl);
@@ -392,11 +407,16 @@ AFRAME.registerComponent('popup-video-hud',{
           let src = await chooseMobileFirst(this.video, this.data.src);
           if (!src){ this.hide(); return; }
 
-          // Особый случай — кошка/clip1: отдельная аудиодорожка
           if (this.data.audio){
             try{
-              const a = document.getElementById('clip1Audio');
-              if (a){ a.currentTime = 0; a.play().catch(()=>{}); this._extAudio = a; }
+              const audioId = this.data.audio + 'Audio';
+              const a = document.getElementById(audioId);
+              if (a){
+                pauseAmb();
+                a.currentTime = 0;
+                a.play().catch(()=>{});
+                this._extAudio = a;
+              }
             }catch(_){}
           }
 
@@ -417,14 +437,23 @@ AFRAME.registerComponent('popup-video-hud',{
   },
   onEnded(){
     this.looped++;
-    if (this.looped < this.data.loops){ try{ this.video.currentTime=0.05; }catch(_){}
+    if (this.looped < this.data.loops){
+      try{ this.video.currentTime=0.05; }catch(_){}
+      if (this._extAudio) {
+        this._extAudio.currentTime = 0;
+        this._extAudio.play().catch(()=>{});
+      }
       robustPlay(this.video);
     } else { this.hide(); this.waitExit=true; }
   },
   hide(){
     try{ this.video.pause(); }catch(_){}
-    if (this._extAudio){ try{ this._extAudio.pause(); }catch(_){}
-      try{ this._extAudio.currentTime=0; }catch(_){} this._extAudio=null; }
+    if (this._extAudio){
+      try{ this._extAudio.pause(); }catch(_){}
+      try{ this._extAudio.currentTime=0; }catch(_){}
+      this._extAudio=null;
+      resumeAmb();
+    }
     popupWrap.style.display='none'; this.active=false;
   },
   cleanup(){
@@ -436,7 +465,7 @@ AFRAME.registerComponent('popup-video-hud',{
 
 /* ========== хвост: СПРАЙТЫ (plane + look-at), лимит в 3 раза меньше ========== */
 AFRAME.registerComponent('crumb-trail',{
-  schema:{ step:{default:0.006}, size:{default:0.05}, color:{default:'#00e0ff'}, fadeSeconds:{default:15}, max:{default:isTouch?5000:10000}, y:{default:0.03} },
+  schema:{ step:{default:0.5}, size:{default:0.05}, color:{default:'#00e0ff'}, fadeSeconds:{default:15}, max:{default:isTouch?5000:10000}, y:{default:0.03} },
   init(){ this.last=null; this.pool=[]; this.active=[]; this.tmp=new THREE.Vector3(); this.forceReset=false;
     document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) this.forceReset=true; }); },
   tick(){
@@ -551,10 +580,10 @@ AFRAME.registerComponent('attention-dog',{
 
 /* ========== Плейны: iOS — видео без звука, desktop — как было ========== */
 AFRAME.registerComponent('plane-video-once',{
-  schema:{ nodeName:{default:''}, videoSrc:{default:''}, radius:{default:2.5}, hysteresis:{default:0.10} },
+  schema:{ nodeName:{default:''}, videoSrc:{default:''}, audio:{default:''}, radius:{default:2.5}, hysteresis:{default:0.10} },
   init(){
     this.node=null; this.ready=false; this.playing=false; this.waitExit=false;
-    this.video=null; this.tex=null;
+    this.video=null; this.tex=null; this._extAudio=null;
     whenModelReady(root=>{ this.node=findNodeByName(root, this.data.nodeName); if(!this.node) return; this.node.visible=false; this.ready=true; });
   },
   tick(){
@@ -572,10 +601,25 @@ AFRAME.registerComponent('plane-video-once',{
 
       const makeMaterial = (tex)=>{ const m = new THREE.MeshBasicMaterial({ map:tex, side:THREE.DoubleSide }); m.toneMapped=false; return m; };
 
-      if (isiOS()){
+      if (isTouch){
         this.video = planeVideoMobile; try{ this.video.pause(); }catch(_){}
         const src = await chooseMobileFirst(this.video, this.data.videoSrc);
         if (!src){ this.finish(); return; }
+
+        if (this.data.audio){
+          try{
+            const audioId = this.data.audio + 'Audio';
+            const a = document.getElementById(audioId);
+            if (a){
+              pauseAmb();
+              a.currentTime = 0;
+              a.play().catch(()=>{});
+              this._extAudio = a;
+            }
+          }catch(_){}
+        }
+
+        this.video.addEventListener('ended', ()=>this.finish(), {once:true});
         const ok = await robustPlay(this.video);
         if (!ok){ this.finish(); return; }
 
@@ -611,6 +655,12 @@ AFRAME.registerComponent('plane-video-once',{
   },
   finish(){
     try{ this.video?.pause(); }catch(_){}
+    if (this._extAudio){
+      try{ this._extAudio.pause(); }catch(_){}
+      try{ this._extAudio.currentTime=0; }catch(_){}
+      this._extAudio=null;
+      resumeAmb();
+    }
     if (this.tex){ this.tex.dispose(); this.tex=null; }
     cleanupVideoEl(this.video);
     this.node.visible=false;
@@ -697,11 +747,10 @@ AFRAME.registerComponent('trigger-director',{
       };
 
       const defLoops=1;
-      // у cat на мобилке включим отдельный звук (audio:)
       const cat    =findNodeByName(root,'cat');     if(cat)    makeAtNode(cat,   'trigger-popup','popup-video-hud','radius:1.5; loops:'+defLoops+'; hysteresis:0.2; side:right; src:assets/video/clip1.mp4; audio:clip1');
-      const pharma =findNodeByName(root,'pharma');  if(pharma) makeAtNode(pharma,'trigger-popup','popup-video-hud','radius:2.5; loops:'+defLoops+'; hysteresis:0.2; side:left;  src:assets/video/pharma.mp4');
-      const petals =findNodeByName(root,'petals');  if(petals) makeAtNode(petals,'trigger-popup','popup-video-hud','radius:3.0; loops:'+defLoops+'; hysteresis:0.2; side:right; src:assets/video/petals.mp4');
-      const tree   =findNodeByName(root,'tree');    if(tree)   makeAtNode(tree,  'trigger-popup','popup-video-hud','radius:3.0; loops:'+defLoops+'; hysteresis:0.2; side:left;  src:assets/video/tree.mp4');
+      const pharma =findNodeByName(root,'pharma');  if(pharma) makeAtNode(pharma,'trigger-popup','popup-video-hud','radius:2.5; loops:'+defLoops+'; hysteresis:0.2; side:left;  src:assets/video/pharma.mp4; audio:pharma');
+      const petals =findNodeByName(root,'petals');  if(petals) makeAtNode(petals,'trigger-popup','popup-video-hud','radius:3.0; loops:'+defLoops+'; hysteresis:0.2; side:right; src:assets/video/petals.mp4; audio:petals');
+      const tree   =findNodeByName(root,'tree');    if(tree)   makeAtNode(tree,  'trigger-popup','popup-video-hud','radius:3.0; loops:'+defLoops+'; hysteresis:0.2; side:left;  src:assets/video/tree.mp4; audio:tree');
 
       const taverna=findNodeByName(root,'taverna');
       if (taverna) makeAtNode(taverna,'trigger-reveal','reveal-node-rot-fade','targetName:gyros; radius:2.0; hysteresis:0.2; spinDegPerSec:60; lifeMs:15000; fadeMs:800; soundId:gyrosAudio');
@@ -712,7 +761,7 @@ AFRAME.registerComponent('trigger-director',{
       ['sunset2','sunset3','waves'].forEach(name=>{
         const n=findNodeByName(root,name);
         if (n){ const e=makeAtNode(n,'trigger-plane', null, null);
-          e.setAttribute('plane-video-once',`nodeName:${name}; videoSrc:assets/video/${name}.mp4; radius:2.5; hysteresis:0.1`);
+          e.setAttribute('plane-video-once',`nodeName:${name}; videoSrc:assets/video/${name}.mp4; audio:${name}; radius:2.5; hysteresis:0.1`);
         }
       });
     });
