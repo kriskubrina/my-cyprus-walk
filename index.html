@@ -752,9 +752,12 @@ AFRAME.registerComponent('moving-object-trigger', {
     },
 
     tick: function (time, deltaTime) {
+        // DIAGNOSTIC: Animation logic disabled for primitive shape.
+        /*
         if (this.mixer) {
             this.mixer.update(deltaTime / 1000);
         }
+        */
 
         if (!this.triggered) {
             const playerPos = (isTouch ? rig : camEl).object3D.getWorldPosition(new THREE.Vector3());
@@ -778,11 +781,17 @@ AFRAME.registerComponent('moving-object-trigger', {
     spawnObject: function() {
         const movingObjectEntity = document.createElement('a-entity');
 
-        movingObjectEntity.setAttribute('gltf-model', '#movingObject');
+        // DIAGNOSTIC: Use a simple box instead of the complex model.
+        // movingObjectEntity.setAttribute('gltf-model', '#movingObject');
+        movingObjectEntity.setAttribute('geometry', 'primitive: box; width: 0.5; height: 0.5; depth: 0.5');
+        movingObjectEntity.setAttribute('material', 'color: red');
+
         movingObjectEntity.setAttribute('scale', '0.4 0.4 0.4');
         movingObjectEntity.setAttribute('rotation', '0 -90 0');
         movingObjectEntity.setAttribute('position', `${this.spawnPoint.x} ${this.spawnPoint.y} ${this.spawnPoint.z}`);
 
+        // DIAGNOSTIC: Animation logic disabled for primitive shape.
+        /*
         movingObjectEntity.addEventListener('model-loaded', (e) => {
             try {
                 const model = e.detail.model;
@@ -798,9 +807,14 @@ AFRAME.registerComponent('moving-object-trigger', {
             this.movingObject.setAttribute('visible', true);
             this.targetIndex = 0;
         }, { once: true });
+        */
 
         this.el.sceneEl.appendChild(movingObjectEntity);
         this.movingObject = movingObjectEntity;
+
+        // For a primitive, we can make it visible and start moving immediately.
+        this.movingObject.setAttribute('visible', true);
+        this.targetIndex = 0;
     },
 
     move: function (deltaTime) {
