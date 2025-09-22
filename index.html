@@ -134,6 +134,7 @@
     </a-entity>
   </a-entity>
 
+  <a-entity id="moving-object-model" gltf-model="#movingObject" position="-3.789 0 3.585" scale="0.4 0.4 0.4" rotation="0 -90 0" visible="false"></a-entity>
   <a-entity id="streetEntity" gltf-model="#world" position="0 0 0"></a-entity>
 </a-scene>
 
@@ -750,13 +751,9 @@ AFRAME.registerComponent('moving-object-trigger', {
         this.speed = 1; // 1 meter per second
         this.targetIndex = -1; // -1 means it's at spawn, and will move to waypoints[0]
 
-        const movingObjectEntity = document.createElement('a-entity');
-        movingObjectEntity.setAttribute('gltf-model', '#movingObject');
-        movingObjectEntity.setAttribute('scale', '0.4 0.4 0.4');
-        movingObjectEntity.setAttribute('rotation', '0 -90 0');
-        movingObjectEntity.object3D.visible = false;
+        this.movingObject = document.querySelector('#moving-object-model');
 
-        movingObjectEntity.addEventListener('model-loaded', (e) => {
+        this.movingObject.addEventListener('model-loaded', (e) => {
             try {
                 const model = e.detail.model;
                 if (model.animations && model.animations.length) {
@@ -768,11 +765,6 @@ AFRAME.registerComponent('moving-object-trigger', {
                 console.error('Error setting up animation mixer for moving object:', e);
             }
         });
-
-        this.el.sceneEl.appendChild(movingObjectEntity);
-        this.movingObject = movingObjectEntity;
-
-        this.movingObject.object3D.position.copy(this.spawnPoint);
     },
 
     tick: function (time, deltaTime) {
