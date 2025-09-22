@@ -87,6 +87,7 @@
   </style>
 </head>
 <body>
+
 <div id="boot">
   <div class="dots"><span class="dot3"></span><span class="dot3"></span><span class="dot3"></span></div>
   <div class="gr">Η ανάμνηση φορτώνεται…</div>
@@ -110,11 +111,9 @@
     <img id="skyTex" src="assets/images/sky.jpg" crossorigin="anonymous">
     <a-asset-item id="world" src="assets/models/limassol-walk.glb"></a-asset-item>
 
-    <!-- Видео-элементы: HUD и плейны -->
     <video id="popupVideo" preload="metadata" playsinline webkit-playsinline crossorigin="anonymous"></video>
     <video id="planeVideoMobile" preload="metadata" playsinline webkit-playsinline style="display:none"></video>
 
-    <!-- Аудио-ассеты -->
     <audio id="amb"        src="assets/audio/Analog_Mannequin%20Milk%20Cassette%20X.mp3%20-%20Demo.mp3" preload="auto" crossorigin="anonymous"></audio>
     <audio id="dogAudio"   src="assets/audio/dog.mp3"   preload="auto" crossorigin="anonymous"></audio>
     <audio id="gyrosAudio" src="assets/audio/gyros.mp3" preload="auto" crossorigin="anonymous"></audio>
@@ -145,6 +144,7 @@
 <div id="joy-rot"  class="joy"></div>
 <div id="hud">x:0 y:0 z:0</div>
 <div id="radar"><canvas id="radarCanvas"></canvas></div>
+
 <script>
 /* ==== Basics & DOM ==== */
 const isTouch = AFRAME.utils.device.isMobile() || navigator.maxTouchPoints>0 || window.matchMedia('(pointer: coarse)').matches;
@@ -161,10 +161,10 @@ const boot  = document.getElementById('boot');
 const cassetteHint = document.getElementById('cassette-hint');
 const cassetteRing = document.getElementById('cassette-ring');
 
-/* Глобальное облегчение во время медиа */
+/* глобальная «нагрузка» от медиа, заморозка хвоста/радара */
 let mediaActive=0, freezeTrail=false;
-function onMediaStart(){ mediaActive++; freezeTrail=true; if (typeof setRadarSlow==='function') setRadarSlow(true); }
-function onMediaEnd(){ mediaActive=Math.max(0,mediaActive-1); if(!mediaActive){ freezeTrail=false; if (typeof setRadarSlow==='function') setRadarSlow(false); } }
+function onMediaStart(){ mediaActive++; freezeTrail=true; if (typeof window.setRadarSlow==='function') window.setRadarSlow(true); }
+function onMediaEnd(){ mediaActive=Math.max(0,mediaActive-1); if(!mediaActive){ freezeTrail=false; if (typeof window.setRadarSlow==='function') window.setRadarSlow(false); } }
 
 /* ==== Model utils ==== */
 function whenModelReady(cb){
@@ -238,7 +238,7 @@ if (isTouch){
   jm.on('end', resetSticks);
   const jr=nipplejs.create({ zone:jrWrap, mode:'static', size:JOY_SIZE, position:{left:'50%',top:'50%'} , color:'white', restOpacity:0.85 });
   jr.on('move',(_,d)=>{ if(!d||!d.vector) return; rotActive=true; rotVec.x=d.vector.x; rotVec.y=d.vector.y; });
-  jr.on('end', resetSticks;
+  jr.on('end', resetSticks);
 
   AFRAME.registerComponent('mobile-camera-control',{
     schema:{ moveSpeed:{default:1.9}, rotSpeed:{default:1.9} },
@@ -290,7 +290,7 @@ async function chooseSrcStrict(videoEl, baseSrc){
     return null;
   }
 }
-/* Лёгкий прогрев видео */
+/* лёгкий прогрев видео */
 const warmCache=new Set();
 async function warmFetchVideo(url){ if (!url || warmCache.has(url)) return; try{ await fetch(url, {cache:'force-cache', mode:'no-cors'}); warmCache.add(url); }catch(_){} }
 
@@ -416,9 +416,8 @@ AFRAME.registerComponent('trail-line',{
   }
 });
 (isTouch?rig:camEl).setAttribute('trail-line','');
-</script>
-<script>
-/* ==== Audio cache для mp3 (видео всегда muted) ==== */
+
+/* ==== Audio cache для mp3 (видео всегда muted на мобиле) ==== */
 const audioCache=new Map(); let threeAudioLoader=null;
 function audioBasenameFromVideo(src){
   try{
@@ -432,7 +431,6 @@ async function loadAudioBufferFor(videoSrc){
   const url='assets/audio/'+base+'.mp3';
   try{
     if(!threeAudioLoader) threeAudioLoader=new THREE.AudioLoader();
-    const ctx=await ensureAudioCtx();
     const buffer=await new Promise((res,rej)=>threeAudioLoader.load(url,res,undefined,rej));
     audioCache.set(base,{buffer,url}); return buffer;
   }catch(e){ console.warn('Audio load failed', url, e); audioCache.set(base,{buffer:null,url}); return null; }
@@ -459,9 +457,7 @@ AFRAME.registerComponent('popup-video-hud',{
     }
   },
   async show(){
-    this.cleanup(); this.active=true; this.looped=0;
-    if (this.data.side==='left'){ popupWrap.style.left='12px'; popupWrap.style.right='auto'; } else { popupWrap.style.right='12px'; popupWrap.style.left='auto'; }
-    popupWrap.style.display='block';
+    this.active=true; this.looped=0; popupWrap.style.display='block'; this.cleanup();
     try{
       this.video.removeEventListener('ended', this._onEnded);
       this.video.muted=true; // видео без встроенного аудио; звук — через mp3
@@ -594,7 +590,7 @@ AFRAME.registerComponent('attention-dog',{
     if(!this.dogNode) return;
     const m=(isTouch?rig:camEl).object3D.getWorldPosition(new THREE.Vector3());
     const t=this.el.object3D.getWorldPosition(new THREE.Vector3());
-    const d=Math.hypот(m.x-t.x, m.z-t.z);
+    const d=Math.hypot(m.x-t.x, m.z-t.z);
 
     if (this.armed && d<=this.data.radius && !this.playing){
       enqueueTrigger('reveal', async ()=>{
@@ -617,7 +613,7 @@ AFRAME.registerComponent('attention-dog',{
   }
 });
 
-/* ==== Radar с «замедлением» ==== */
+/* ==== Radar (с «замедлением») ==== */
 (function(){
   const c=document.getElementById('radarCanvas'); const ctx=c.getContext('2d');
   const RADAR_SIZE=(isTouch?160:400); c.width=RADAR_SIZE; c.height=RADAR_SIZE;
