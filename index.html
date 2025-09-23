@@ -454,7 +454,11 @@ AFRAME.registerComponent('popup-video-hud',{
       this.el.components.sound.stopSound();
       resumeAmb();
     }
-    if (isTouch) isMediaBusy = false;
+    if (isTouch) {
+        isMediaBusy = false;
+        const preloader = this.el.sceneEl.components['video-preloader'];
+        if (preloader) preloader.revokeVideo(this.data.src);
+    }
     popupWrap.style.display='none'; this.active=false;
   },
   cleanup(){
@@ -680,7 +684,11 @@ AFRAME.registerComponent('plane-video-once',{
       this.el.components.sound.stopSound();
       resumeAmb();
     }
-    if (isTouch) isMediaBusy = false;
+    if (isTouch) {
+        isMediaBusy = false;
+        const preloader = this.el.sceneEl.components['video-preloader'];
+        if (preloader) preloader.revokeVideo(this.data.videoSrc);
+    }
     if (this.tex){ this.tex.dispose(); this.tex=null; }
     cleanupVideoEl(this.video);
     this.node.visible=false;
@@ -985,6 +993,15 @@ AFRAME.registerComponent('video-preloader', {
   getPreloadedSrc: function (originalSrc) {
     const mobileSrc = originalSrc.replace(/\.mp4$/i,'.mobile.mp4');
     return this.cache.get(mobileSrc) || mobileSrc;
+  },
+  revokeVideo: function (originalSrc) {
+    const mobileSrc = originalSrc.replace(/\.mp4$/i,'.mobile.mp4');
+    const blobUrl = this.cache.get(mobileSrc);
+    if (blobUrl) {
+        URL.revokeObjectURL(blobUrl);
+        this.cache.delete(mobileSrc);
+        this.preloaded.delete(mobileSrc);
+    }
   }
 });
 </script>
