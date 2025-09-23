@@ -134,7 +134,7 @@
     </a-entity>
   </a-entity>
 
-  <a-entity id="moving-object" moving-object-logic gltf-model="#movingObject" scale="0.4 0.4 0.4" rotation="0 -90 0"></a-entity>
+  <a-entity id="moving-object" moving-object-logic gltf-model="#movingObject" scale="0.4 0.4 0.4" rotation="0 -90 0" position="0 -1000 0"></a-entity>
   <a-entity id="streetEntity" gltf-model="#world" position="0 0 0"></a-entity>
 </a-scene>
 
@@ -746,7 +746,7 @@ AFRAME.registerComponent('moving-object-logic', {
     init: function () {
         this.triggered = false;
         this.mixer = null;
-        const spawnPoint = new THREE.Vector3(-3.789, 0, 3.585);
+        this.spawnPoint = new THREE.Vector3(-3.789, 0, 3.585);
         this.waypoints = [
             new THREE.Vector3(-16.632, 0, 4.002),
             new THREE.Vector3(-17.379, 0, -0.914),
@@ -755,9 +755,6 @@ AFRAME.registerComponent('moving-object-logic', {
         ];
         this.speed = 1;
         this.targetIndex = -1;
-
-        this.el.object3D.position.copy(spawnPoint);
-        this.el.setAttribute('visible', false);
 
         this.el.addEventListener('model-loaded', (e) => {
             try {
@@ -783,7 +780,7 @@ AFRAME.registerComponent('moving-object-logic', {
             const distance = playerPos.distanceTo(this.data.triggerPosition);
             if (distance <= this.data.radius) {
                 this.triggered = true;
-                this.el.setAttribute('visible', true);
+                this.el.object3D.position.copy(this.spawnPoint);
                 this.targetIndex = 0;
             }
             return;
