@@ -755,8 +755,6 @@ AFRAME.registerComponent('moving-object-logic', {
         ];
         this.speed = 1;
         this.targetIndex = -1;
-        this.tickCounter = 0;
-        this.checkInterval = 10; // Check distance every 10 ticks
 
         this.el.object3D.position.copy(spawnPoint);
         this.el.setAttribute('visible', false);
@@ -781,15 +779,12 @@ AFRAME.registerComponent('moving-object-logic', {
         }
 
         if (!this.triggered) {
-            this.tickCounter++;
-            if (this.tickCounter % this.checkInterval === 0) {
-                const playerPos = (isTouch ? rig : camEl).object3D.getWorldPosition(new THREE.Vector3());
-                const distance = playerPos.distanceTo(this.data.triggerPosition);
-                if (distance <= this.data.radius) {
-                    this.triggered = true;
-                    this.el.setAttribute('visible', true);
-                    this.targetIndex = 0;
-                }
+            const playerPos = (isTouch ? rig : camEl).object3D.getWorldPosition(new THREE.Vector3());
+            const distance = playerPos.distanceTo(this.data.triggerPosition);
+            if (distance <= this.data.radius) {
+                this.triggered = true;
+                this.el.setAttribute('visible', true);
+                this.targetIndex = 0;
             }
             return;
         }
