@@ -578,7 +578,13 @@ AFRAME.registerComponent('attention-dog',{
     this.playing=true; this.spawnTime=this.el.sceneEl.time; this.fading=false;
     this.dogNode.visible=true; this.dogNode.scale.setScalar(1);
     try{ this.soundEl?.components.sound.stopSound(); }catch(_){}
-    try{ this.soundEl?.components.sound.playSound(); }catch(_){ setTimeout(()=>this.soundEl?.components.sound.playSound(),140); }
+    setTimeout(() => {
+        try {
+            this.soundEl?.components.sound.playSound();
+        } catch(e) {
+            console.error("Could not play dog sound even after delay:", e);
+        }
+    }, 200);
   }
 });
 
@@ -738,15 +744,76 @@ AFRAME.registerComponent('moving-object-logic', {
     },
 
     init: function () {
-        // DIAGNOSTIC: Component logic disabled
+        this.triggered = false;
+        this.mixer = null;
+        const spawnPoint = new THREE.Vector3(-3.789, 0, 3.585);
+        this.waypoints = [
+            new THREE.Vector3(-16.632, 0, 4.002),
+            new THREE.Vector3(-17.379, 0, -0.914),
+            new THREE.Vector3(15.093, 0, -4.741),
+            new THREE.Vector3(15.820, 0, -0.646)
+        ];
+        this.speed = 1;
+        this.targetIndex = -1;
+        this.tickCounter = 0;
+        this.checkInterval = 10; // Check distance every 10 ticks
+
+        this.el.object3D.position.copy(spawnPoint);
+        this.el.setAttribute('visible', false);
+
+        this.el.addEventListener('model-loaded', (e) => {
+            try {
+                const model = e.detail.model;
+                if (model.animations && model.animations.length) {
+                    this.mixer = new THREE.AnimationMixer(model);
+                    const action = this.mixer.clipAction(model.animations[0]);
+                    action.play();
+                }
+            } catch (err) {
+                console.error('Error setting up animation mixer:', err);
+            }
+        }, { once: true });
     },
 
     tick: function (time, deltaTime) {
-        // DIAGNOSTIC: Component logic disabled
+        if (this.mixer) {
+            this.mixer.update(deltaTime / 1000);
+        }
+
+        if (!this.triggered) {
+            this.tickCounter++;
+            if (this.tickCounter % this.checkInterval === 0) {
+                const playerPos = (isTouch ? rig : camEl).object3D.getWorldPosition(new THREE.Vector3());
+                const distance = playerPos.distanceTo(this.data.triggerPosition);
+                if (distance <= this.data.radius) {
+                    this.triggered = true;
+                    this.el.setAttribute('visible', true);
+                    this.targetIndex = 0;
+                }
+            }
+            return;
+        }
+
+        this.move(deltaTime);
     },
 
     move: function (deltaTime) {
-        // DIAGNOSTIC: Component logic disabled
+        if (this.targetIndex === -1) return;
+
+        const targetPosition = this.waypoints[this.targetIndex];
+        const currentPosition = this.el.object3D.position;
+        const distanceToTarget = currentPosition.distanceTo(targetPosition);
+
+        if (distanceToTarget < 0.1) {
+            const yRotation = new THREE.Euler(0, -Math.PI / 2, 0);
+            this.el.object3D.quaternion.multiply(new THREE.Quaternion().setFromEuler(yRotation));
+            this.targetIndex = (this.targetIndex + 1) % this.waypoints.length;
+        }
+
+        const nextTargetPosition = this.waypoints[this.targetIndex];
+        const direction = nextTargetPosition.clone().sub(currentPosition).normalize();
+        const moveDistance = this.speed * (deltaTime / 1000);
+        this.el.object3D.position.add(direction.multiplyScalar(moveDistance));
     }
 });
 
