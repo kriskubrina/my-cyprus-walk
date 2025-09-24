@@ -245,6 +245,15 @@ document.querySelector('a-scene').addEventListener('loaded', ()=>{
   if (isiOS()){
     try{ const r = document.querySelector('a-scene').renderer; r.setPixelRatio(1); r.antialias = false; }catch(_){}
   }
+  if (AFRAME.utils.device.isAndroid()){
+    const camEl = document.getElementById('player');
+    if (camEl) {
+      const camera = camEl.getAttribute('camera');
+      camera.far = 10000;
+      camera.near = 0.1;
+      camEl.setAttribute('camera', camera);
+    }
+  }
 });
 
 /* ========== размеры HUD (радар+попап) ========== */
