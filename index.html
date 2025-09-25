@@ -111,7 +111,7 @@
       transform: translateY(-100%);
       transition: transform 260ms ease;
       overflow: hidden;
-      font: inherit;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
     }
     .about-overlay.open .about-panel { transform: translateY(0); }
 
@@ -119,11 +119,16 @@
       height: 100%; max-width: var(--content-max); margin: 0 auto;
       padding: calc(var(--pad) + 8px) var(--pad) var(--pad) var(--pad);
       box-sizing: border-box; overflow-y: auto; scrollbar-width: thin;
+      touch-action: auto;
     }
 
     .about-topbar {
       display: flex; align-items: center; justify-content: space-between;
       margin-bottom: var(--gap); color: #fff;
+    }
+    .about-social, .about-lang, .about-right {
+      display: flex;
+      align-items: center;
     }
 
     .about-left { display: flex; align-items: center; gap: 12px; }
@@ -1148,7 +1153,7 @@ Special thanks: Sergey Akulenok, Natalia Shumskaya, Tatyana Yaksina<br/>
 And to Cyprus, which we now call home.</p>
 <p>—</p>
 <p>A neighbor’s cat that tried several times to sneak into our home and settle there.<br/>
-The seafront near Dodo Pizza. A gaze sliding toward the horizon without obstacles.<br/>
+The seafront near the pier. A gaze sliding toward the horizon without obstacles.<br/>
 The joy of having a night pharmacy just around the corner.<br/>
 Hypnotic stone curves carved by waves.<br/>
 Friendly old παππούδες, sipping coffee all day long in the nearby tavern.<br/>
