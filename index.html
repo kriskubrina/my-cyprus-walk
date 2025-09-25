@@ -5,6 +5,7 @@
   <title>My Cyprus Walk</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="theme-color" content="#000000" />
+  <link rel="icon" type="image/x-icon" href="favicon.ico">
   <script src="https://cdn.jsdelivr.net/npm/aframe@1.7.0/dist/aframe.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/nipplejs@0.10.1/dist/nipplejs.min.js"></script>
   <style>
@@ -121,6 +122,7 @@
       box-sizing: border-box; overflow-y: auto; scrollbar-width: thin;
       touch-action: auto;
       -webkit-overflow-scrolling: touch;
+      min-height: 100.1%;
     }
 
     .about-topbar {
@@ -1230,6 +1232,35 @@ in a place once unfamiliar, but now home.</p>`;
       });
 
       render('en');
+    })();
+
+    (function() {
+      // Fix sky texture not being power-of-two
+      const scene = document.querySelector('a-scene');
+      scene.addEventListener('loaded', function () {
+        const skyEl = document.querySelector('a-sky');
+        const skyTex = document.getElementById('skyTex');
+
+        const img = new Image();
+        img.onload = function() {
+          const w = img.width;
+          const h = img.height;
+
+          const newW = Math.pow(2, Math.round(Math.log(w) / Math.log(2)));
+          const newH = Math.pow(2, Math.round(Math.log(h) / Math.log(2)));
+
+          if (w === newW && h === newH) return; // a-sky can handle it
+
+          const canvas = document.createElement('canvas');
+          canvas.width = newW;
+          canvas.height = newH;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, newW, newH);
+
+          skyEl.setAttribute('src', canvas.toDataURL());
+        }
+        img.src = skyTex.src;
+      });
     })();
   </script>
 </body>
