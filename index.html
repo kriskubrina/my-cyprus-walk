@@ -113,16 +113,18 @@
       transition: transform 260ms ease;
       overflow: hidden;
       font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      position: relative; /* Jules: Make this a containing block */
     }
     .about-overlay.open .about-panel { transform: translateY(0); }
 
     .about-inner {
-      height: 100%; max-width: var(--content-max); margin: 0 auto;
+      position: absolute; /* Jules: Allow scrolling within the panel */
+      inset: 0;
+      max-width: var(--content-max); margin: 0 auto;
       padding: calc(var(--pad) + 8px) var(--pad) var(--pad) var(--pad);
       box-sizing: border-box; overflow-y: auto; scrollbar-width: thin;
       touch-action: auto;
       -webkit-overflow-scrolling: touch;
-      min-height: 100.1%;
     }
 
     .about-topbar {
@@ -237,7 +239,7 @@
     <audio id="wavesAudio"  src="assets/audio/waves.mp3"  preload="auto" crossorigin="anonymous"></audio>
   </a-assets>
 
-  <a-sky src="#skyTex" rotation="0 -90 0"></a-sky>
+  <a-sky src="#skyTex" theta-length="180"></a-sky>
 
   <a-entity light="type: ambient; intensity: 0.35"></a-entity>
   <a-entity light="type: directional; intensity: 0.7" position="2 4 2"></a-entity>
