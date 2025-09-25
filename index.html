@@ -96,7 +96,7 @@
       padding: 4px 10px;
       border-radius: 9999px;
       cursor: pointer;
-      font: inherit;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
       opacity: 0.92;
     }
 
@@ -120,6 +120,7 @@
       padding: calc(var(--pad) + 8px) var(--pad) var(--pad) var(--pad);
       box-sizing: border-box; overflow-y: auto; scrollbar-width: thin;
       touch-action: auto;
+      -webkit-overflow-scrolling: touch;
     }
 
     .about-topbar {
@@ -180,6 +181,8 @@
               <button type="button" id="about-lang-en" aria-pressed="true">EN</button>
               <span>·</span>
               <button type="button" id="about-lang-ru" aria-pressed="false">RU</button>
+              <span>·</span>
+              <button type="button" id="about-lang-gr" aria-pressed="false">GR</button>
             </div>
             <button class="about-close" id="about-close" aria-label="Close">✕</button>
           </div>
@@ -238,7 +241,7 @@
   <a-entity light="type: directional; intensity: 0.7" position="2 4 2"></a-entity>
 
   <a-entity id="rig">
-    <a-entity id="player" camera="near:0.01; far:1000"
+    <a-entity id="player" camera="near:0.01; far:10000"
               look-controls="touchEnabled:false; mouseEnabled:true"
               position="0 1.6 0"
               cursor="rayOrigin: mouse" raycaster="objects: .clickable; far: 50"
@@ -355,15 +358,6 @@ function unlockMedia(){
 document.querySelector('a-scene').addEventListener('loaded', ()=>{
   if (isiOS()){
     try{ const r = document.querySelector('a-scene').renderer; r.setPixelRatio(1); r.antialias = false; }catch(_){}
-  }
-  if (AFRAME.utils.device.isAndroid()){
-    const camEl = document.getElementById('player');
-    if (camEl) {
-      const camera = camEl.getAttribute('camera');
-      camera.far = 2500;
-      camera.near = 0.05;
-      camEl.setAttribute('camera', camera);
-    }
   }
 });
 
@@ -1116,6 +1110,31 @@ AFRAME.registerComponent('video-preloader', {
       const contentEl = document.getElementById('about-content');
       const langEN = document.getElementById('about-lang-en');
       const langRU = document.getElementById('about-lang-ru');
+      const langGR = document.getElementById('about-lang-gr');
+
+      const TEXT_GR = `
+<p>My Cyprus Walk — ένας ψηφιακός περίπατος.<br/>
+Μια οπτική αναστοχαστική προσέγγιση στη μνήμη, με τις ανακρίβειες, τις μεταμορφώσεις<br/>
+και τα συναισθηματικά αγκίστρια της. Μια προσπάθεια να αποτυπωθούν θραύσματα της μετανάστευσης,<br/>
+οι πρώτες στιγμές επαφής με μια νέα γη.</p>
+<p>Έργο του συλλογικού frame899<br/>
+Καλλιτέχνες: Kristina Kubrina, Ivan Maksimov<br/>
+Ευχαριστίες: Sergey Akulenok, Natalia Shumskaya, Tatyana Yaksina<br/>
+Και στην Κύπρο, που τώρα αποκαλούμε σπίτι μας.</p>
+<p>—</p>
+<p>Μια γάτα της γειτονιάς που προσπάθησε πολλές φορές να μπει στο σπίτι μας και να εγκατασταθεί εκεί.<br/>
+Το παραλιακό μέτωπο κοντά στην προβλήτα. Το βλέμμα γλιστράει στον ορίζοντα χωρίς εμπόδια.<br/>
+Η χαρά του να υπάρχει ένα νυχτερινό φαρμακείο στη γειτονιά.<br/>
+Υπνωτιστικές καμπύλες της πέτρας, σμιλεμένες από τα κύματα.<br/>
+Φιλικοί παππούδες, πίνοντας καφέ όλη μέρα στην ταβέρνα της γειτονιάς.<br/>
+Αγαπημένο πανόραμα της πόλης.<br/>
+Η φλεγόμενη φλόγα του δέντρου Ντελόνιξ, μια πραγματική φωτιά.<br/>
+Η σουρεαλιστική ζακαράντα στο πάρκο κοντά στον ζωολογικό κήπο της Λεμεσού. Θέα από το γραφείο.<br/>
+Μερικές φορές μοιάζει σαν να υπάρχουν περισσότερες γάτες παρά άνθρωποι στην Κύπρο.<br/>
+Ένας καθαρός, σχεδόν ανέφελος βιολετί–πορτοκαλί ουρανός. Πουθενά αλλού δεν έχουμε δει τέτοιους ουρανούς.<br/>
+Θολές αναμνήσεις: εμφανίζονται θραύσματα, αλλά ποτέ μια ολοκληρωμένη εικόνα.<br/>
+Επαναλαμβανόμενα σπίτια και δρόμοι, εκείνο το τρυφερό συναίσθημα: η ανάγκη να χτίσεις μια καινούρια καθημερινότητα<br/>
+σε έναν τόπο άλλοτε άγνωστο, που τώρα είναι το σπίτι σου.</p>`;
 
       const TEXT_RU = `
 <p><strong>My Cyprus Walk</strong> — цифровая прогулка.<br/>
@@ -1171,9 +1190,16 @@ in a place once unfamiliar, but now home.</p>`;
 
       function render(lang) {
         currentLang = lang;
-        contentEl.innerHTML = lang === 'ru' ? TEXT_RU : TEXT_EN;
+        if (lang === 'ru') {
+          contentEl.innerHTML = TEXT_RU;
+        } else if (lang === 'gr') {
+          contentEl.innerHTML = TEXT_GR;
+        } else {
+          contentEl.innerHTML = TEXT_EN;
+        }
         langEN.setAttribute('aria-pressed', String(lang === 'en'));
         langRU.setAttribute('aria-pressed', String(lang === 'ru'));
+        langGR.setAttribute('aria-pressed', String(lang === 'gr'));
       }
 
       function openOverlay() {
@@ -1196,6 +1222,7 @@ in a place once unfamiliar, but now home.</p>`;
       closeBtn.addEventListener('click', closeOverlay);
       langEN.addEventListener('click', () => render('en'));
       langRU.addEventListener('click', () => render('ru'));
+      langGR.addEventListener('click', () => render('gr'));
 
       overlay.addEventListener('click', (e) => {
         const panel = overlay.querySelector('.about-panel');
