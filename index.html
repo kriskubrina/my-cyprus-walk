@@ -76,8 +76,114 @@
       z-index:51; pointer-events:none; display:none;
     }
   </style>
+  <style>
+    :root {
+      --overlay-bg: rgba(0,0,0,0.75);
+      --panel-height-desktop: 50vh;
+      --panel-height-mobile: 100vh;
+      --content-max: 760px;
+      --pad: 18px;
+      --gap: 12px;
+    }
+
+    #about-trigger {
+      position: fixed;
+      top: 12px; left: 50%; transform: translateX(-50%);
+      z-index: 1000;
+      background: transparent;
+      border: 1px solid #fff;
+      color: #fff;
+      padding: 4px 10px;
+      border-radius: 9999px;
+      cursor: pointer;
+      font: inherit;
+      opacity: 0.92;
+    }
+
+    .about-overlay { position: fixed; inset: 0; pointer-events: none; z-index: 999; }
+    .about-overlay.open { pointer-events: auto; }
+
+    .about-panel {
+      position: absolute; left: 0; right: 0; top: 0;
+      height: var(--panel-height-desktop);
+      background: #000000cc; color: #fff;
+      -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px);
+      transform: translateY(-100%);
+      transition: transform 260ms ease;
+      overflow: hidden;
+      font: inherit;
+    }
+    .about-overlay.open .about-panel { transform: translateY(0); }
+
+    .about-inner {
+      height: 100%; max-width: var(--content-max); margin: 0 auto;
+      padding: calc(var(--pad) + 8px) var(--pad) var(--pad) var(--pad);
+      box-sizing: border-box; overflow-y: auto; scrollbar-width: thin;
+    }
+
+    .about-topbar {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: var(--gap); color: #fff;
+    }
+
+    .about-left { display: flex; align-items: center; gap: 12px; }
+
+    .about-lang { display: inline-flex; gap: 8px; align-items: center; }
+    .about-lang button { background: transparent; color: #fff; border: none; cursor: pointer; font: inherit; opacity: 0.9; }
+    .about-lang button[aria-pressed="true"] { font-weight: 700; opacity: 1; }
+
+    .about-close { background: transparent; border: none; cursor: pointer; font: inherit; color: #fff; line-height: 1; display: flex; align-items: center; justify-content: center; }
+
+    .about-social { display: inline-flex; gap: 12px; align-items: center; }
+    .about-social a { display: inline-flex; width: 22px; height: 22px; opacity: 0.95; }
+    .about-social a:hover { opacity: 1; }
+    .about-social svg { width: 100%; height: 100%; stroke: #fff; fill: none; }
+
+    .about-right { display: flex; align-items: center; gap: 12px; }
+
+    @media (max-width: 768px) {
+      .about-panel { height: var(--panel-height-mobile); }
+    }
+  </style>
 </head>
 <body>
+  <button id="about-trigger" aria-haspopup="dialog" aria-controls="about-overlay" aria-expanded="false">About</button>
+
+  <div id="about-overlay" class="about-overlay" role="dialog" aria-modal="true" aria-hidden="true">
+    <section class="about-panel" role="document">
+      <div class="about-inner">
+        <div class="about-topbar">
+          <div class="about-left">
+            <div class="about-social">
+              <a href="https://www.instagram.com/frame.899" target="_blank" rel="noopener" aria-label="Instagram">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <rect x="3" y="3" width="18" height="18" rx="5" ry="5" stroke-width="1.8"/>
+                  <circle cx="12" cy="12" r="4.2" stroke-width="1.8"/>
+                  <circle cx="17.3" cy="6.7" r="1.2" stroke-width="1.6"/>
+                </svg>
+              </a>
+              <a href="https://www.tiktok.com/@frame.899" target="_blank" rel="noopener" aria-label="TikTok">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M14 3v8.2a4.6 4.6 0 1 1-3.7-1.8" stroke-width="1.8"/>
+                  <path d="M14 6c1.3 2 3.2 3.1 5.4 3.3" stroke-width="1.8"/>
+                </svg>
+              </a>
+            </div>
+          </div>
+          <div class="about-right">
+            <div class="about-lang" role="group" aria-label="Language">
+              <button type="button" id="about-lang-en" aria-pressed="true">EN</button>
+              <span>·</span>
+              <button type="button" id="about-lang-ru" aria-pressed="false">RU</button>
+            </div>
+            <button class="about-close" id="about-close" aria-label="Close">✕</button>
+          </div>
+        </div>
+
+        <div id="about-content" class="about-content" aria-live="polite" aria-atomic="true"></div>
+      </div>
+    </section>
+  </div>
 <div id="boot">
   <div class="dots"><span class="dot3"></span><span class="dot3"></span><span class="dot3"></span></div>
   <div class="gr">Η ανάμνηση φορτώνεται…</div>
@@ -249,8 +355,8 @@ document.querySelector('a-scene').addEventListener('loaded', ()=>{
     const camEl = document.getElementById('player');
     if (camEl) {
       const camera = camEl.getAttribute('camera');
-      camera.far = 10000;
-      camera.near = 0.1;
+      camera.far = 2500;
+      camera.near = 0.05;
       camEl.setAttribute('camera', camera);
     }
   }
@@ -997,5 +1103,102 @@ AFRAME.registerComponent('video-preloader', {
   }
 });
 </script>
+<script>
+    (function () {
+      const trigger = document.getElementById('about-trigger');
+      const overlay = document.getElementById('about-overlay');
+      const closeBtn = document.getElementById('about-close');
+      const contentEl = document.getElementById('about-content');
+      const langEN = document.getElementById('about-lang-en');
+      const langRU = document.getElementById('about-lang-ru');
+
+      const TEXT_RU = `
+<p><strong>My Cyprus Walk</strong> — цифровая прогулка.<br/>
+Визуальное осмысление памяти, с ее неточностями, трансформациями<br/>
+и эмоциональными якорями. Попытка запечатлеть обрывки воспоминаний об эмиграции,<br/>
+о первых точках соприкосновения с новой землей.</p>
+<p>Проект коллектива <strong>frame.899</strong><br/>
+Авторы: Кристина Кубрина, Иван Максимов<br/>
+Отдельная благодарность: Сергею Акуленку, Наталье Шумской, Татьяне Яксиной.<br/>
+И Кипру, который мы теперь называем домом.</p>
+<p>—</p>
+<p>Соседская кошка, несколько раз пыталась забежать к нам домой и поселиться.<br/>
+Побережье рядом с пирсом. Взгляд скользит к горизонту без препятствий.<br/>
+Радость от того, что рядом с домом есть дежурная аптека.<br/>
+Гипнотические изгибы камня, вымытые водой.<br/>
+Дружелюбные дедули, гоняющие кофеек целый день напролёт в соседней таверне.<br/>
+Любимая панорама города.<br/>
+Пылающее огненное дерево Делоникс, настоящий пожар.<br/>
+Сюрреалистичная Жакаранда в парке рядом с зоопарком Лимассола. Вид из офиса.<br/>
+Порой ощущение, что кошек на Кипре больше, чем людей.<br/>
+Чистый или почти чистый фиолетово-оранжевый градиент почти без облаков.<br/>
+Нигде не видели такого неба.<br/>
+Тающие воспоминания, память складывает отдельные пятна, но не целый образ.<br/>
+Повторяющиеся дома и улицы и щемящее чувство: нужно выстраивать<br/>
+новый быт и новую жизнь в месте, тогда незнакомом, а теперь родном.</p>`;
+
+      const TEXT_EN = `
+<p><strong>My Cyprus Walk</strong> — a digital walk.<br/>
+A visual reflection on memory, with its inaccuracies, transformations,<br/>
+and emotional anchors. An attempt to capture fragments of emigration<br/>
+and the first points of contact with a new land.</p>
+<p>Art project by <strong>frame899</strong><br/>
+Artists: Kristina Kubrina, Ivan Maksimov<br/>
+Special thanks: Sergey Akulenok, Natalia Shumskaya, Tatyana Yaksina<br/>
+And to Cyprus, which we now call home.</p>
+<p>—</p>
+<p>A neighbor’s cat that tried several times to sneak into our home and settle there.<br/>
+The seafront near Dodo Pizza. A gaze sliding toward the horizon without obstacles.<br/>
+The joy of having a night pharmacy just around the corner.<br/>
+Hypnotic stone curves carved by waves.<br/>
+Friendly old παππούδες, sipping coffee all day long in the nearby tavern.<br/>
+A favorite city panorama.<br/>
+The blazing flame Delonix tree, a true fire.<br/>
+The surreal Jacaranda in the park near Limassol Zoo. A view from the office.<br/>
+At times, it feels like there are more cats than people in Cyprus.<br/>
+A pure, almost cloudless violet-orange gradient sky.<br/>
+Nowhere else have we seen such skies.<br/>
+Fading memories: fragments appear, but never a whole picture.<br/>
+Repeating houses and streets, that aching feeling: the need to build a new daily life<br/>
+in a place once unfamiliar, but now home.</p>`;
+
+      let currentLang = 'en';
+
+      function render(lang) {
+        currentLang = lang;
+        contentEl.innerHTML = lang === 'ru' ? TEXT_RU : TEXT_EN;
+        langEN.setAttribute('aria-pressed', String(lang === 'en'));
+        langRU.setAttribute('aria-pressed', String(lang === 'ru'));
+      }
+
+      function openOverlay() {
+        overlay.classList.add('open');
+        overlay.setAttribute('aria-hidden', 'false');
+        trigger.setAttribute('aria-expanded', 'true');
+        closeBtn.focus({ preventScroll: true });
+        window.addEventListener('keydown', onKeyDown);
+      }
+      function closeOverlay() {
+        overlay.classList.remove('open');
+        overlay.setAttribute('aria-hidden', 'true');
+        trigger.setAttribute('aria-expanded', 'false');
+        window.removeEventListener('keydown', onKeyDown);
+        trigger.focus({ preventScroll: true });
+      }
+      function onKeyDown(e) { if (e.key === 'Escape') closeOverlay(); }
+
+      trigger.addEventListener('click', openOverlay);
+      closeBtn.addEventListener('click', closeOverlay);
+      langEN.addEventListener('click', () => render('en'));
+      langRU.addEventListener('click', () => render('ru'));
+
+      overlay.addEventListener('click', (e) => {
+        const panel = overlay.querySelector('.about-panel');
+        if (overlay.classList.contains('open') && !panel.contains(e.target)) closeOverlay();
+      });
+
+      render('en');
+    })();
+  </script>
 </body>
 </html>
