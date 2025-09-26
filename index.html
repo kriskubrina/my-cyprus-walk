@@ -217,7 +217,7 @@
   embedded
   renderer="colorManagement:true; physicallyCorrectLights:false; antialias:true; precision:mediump; powerPreference:high-performance; fullscreen: false"
   loading-screen="enabled:false"
-  device-orientation-permission-ui="enabled:true"
+  device-orientation-permission-ui="enabled:false"
   vr-mode-ui="enabled:false"
   video-preloader>
   <a-assets>
@@ -251,7 +251,7 @@
 
   <a-entity id="rig">
     <a-entity id="player" camera="near:0.01; far:10000"
-              look-controls="touchEnabled:false; mouseEnabled:true"
+              look-controls="touchEnabled:false; mouseEnabled:true; magicWindowTrackingEnabled: false"
               position="0 1.6 0"
               cursor="rayOrigin: mouse" raycaster="objects: .clickable; far: 50"
               proximity-checker>
