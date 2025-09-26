@@ -157,7 +157,7 @@
 
     @media (max-width: 768px) {
       .about-panel { height: var(--panel-height-mobile); }
-      .about-content { font-size: 14px; }
+      .about-content { font-size: 2.2vh; }
     }
   </style>
 </head>
@@ -215,7 +215,7 @@
 
 <a-scene
   embedded
-  renderer="colorManagement:true; physicallyCorrectLights:false; antialias:true; precision:mediump; powerPreference:high-performance; fullscreen: false"
+  renderer="colorManagement:true; physicallyCorrectLights:false; antialias:true; precision:mediump; powerPreference:high-performance; fullscreen: false; logarithmicDepthBuffer: false"
   loading-screen="enabled:false"
   device-orientation-permission-ui="enabled:false"
   vr-mode-ui="enabled:false"
@@ -244,7 +244,7 @@
     <audio id="wavesAudio"  src="assets/audio/waves.mp3"  preload="auto" crossorigin="anonymous"></audio>
   </a-assets>
 
-  <a-entity id="sky" geometry="primitive: sphere; radius: 5000; segmentsWidth: 64; segmentsHeight: 20; thetaLength: 180" material="shader: flat; src: #skyTex; side: back; height: 2048; width: 2048" rotation="90 0 0"></a-entity>
+  <a-entity id="sky" geometry="primitive: sphere; radius: 5000; segmentsWidth: 64; segmentsHeight: 20; thetaLength: 180" material="shader: flat; src: #skyTex; side: back; height: 2048; width: 2048"></a-entity>
 
   <a-entity light="type: ambient; intensity: 0.35"></a-entity>
   <a-entity light="type: directional; intensity: 0.7" position="2 4 2"></a-entity>
