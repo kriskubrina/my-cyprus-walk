@@ -10,7 +10,7 @@
   <script src="https://cdn.jsdelivr.net/npm/nipplejs@0.10.1/dist/nipplejs.min.js"></script>
   <style>
     *{ -webkit-tap-highlight-color:transparent; }
-    html,body{ margin:0; height:100%; background:#000; }
+    html,body{ margin:0; height:100%; background:#000; overflow:hidden; }
     a-loading-screen{ display:none !important; }
     .a-enter-vr-button { display: none !important; }
 
@@ -244,7 +244,7 @@
     <audio id="wavesAudio"  src="assets/audio/waves.mp3"  preload="auto" crossorigin="anonymous"></audio>
   </a-assets>
 
-  <a-entity id="sky" geometry="primitive: sphere; radius: 5000; segmentsWidth: 64; segmentsHeight: 20" material="shader: flat; src: #skyTex; side: back; height: 2048; width: 2048" scale="-1 1 1"></a-entity>
+  <a-entity id="sky" geometry="primitive: sphere; radius: 5000; segmentsWidth: 64; segmentsHeight: 20; thetaLength: 180" material="shader: flat; src: #skyTex; side: back; height: 2048; width: 2048" scale="-1 1 1"></a-entity>
 
   <a-entity light="type: ambient; intensity: 0.35"></a-entity>
   <a-entity light="type: directional; intensity: 0.7" position="2 4 2"></a-entity>
