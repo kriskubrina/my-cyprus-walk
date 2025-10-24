@@ -875,7 +875,7 @@ AFRAME.registerComponent('plane-video-once',{
 
 /* ========== ограничение прямоугольником: X[-25,25], Z[-10,10] ========== */
 AFRAME.registerComponent('clamp-rect',{
-  schema:{ minX:{default:-25}, maxX:{default:25}, minZ:{default:-10}, maxZ:{default:10} },
+  schema:{ minX:{default:-35}, maxX:{default:35}, minZ:{default:-20}, maxZ:{default:20} },
   tick(){
     const p = rig.object3D.position;
     if (p.x < this.data.minX) p.x = this.data.minX;
@@ -884,7 +884,7 @@ AFRAME.registerComponent('clamp-rect',{
     if (p.z > this.data.maxZ) p.z = this.data.maxZ;
   }
 });
-document.querySelector('a-scene').setAttribute('clamp-rect','minX:-25; maxX:25; minZ:-10; maxZ:10');
+document.querySelector('a-scene').setAttribute('clamp-rect','minX:-35; maxX:35; minZ:-20; maxZ:20');
 
 /* ========== Proximity Checker ========== */
 AFRAME.registerComponent('proximity-checker', {
