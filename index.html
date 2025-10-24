@@ -1294,28 +1294,28 @@ in a place once unfamiliar, but now home.</p>`;
 
     // левый стик — движение
     const moveX = gp.axes[0] || 0;  // влево/вправо
-    const moveY = gp.axes[1] || 0;  // вперёд/назад (инвертируем позже)
+    const moveY = gp.axes[1] || 0;  // вперёд/назад
 
     // правый стик — поворот камеры
     const rotX = gp.axes[2] || 0;
-    const rotY = gp.axes[3] || 0;  // вверх/вниз (инвертируем позже)
+    const rotY = gp.axes[3] || 0;
 
-    // движение персонажа
+    // направление вперёд и вправо относительно камеры
     const fwd = new THREE.Vector3();
     camEl.object3D.getWorldDirection(fwd);
     fwd.y = 0;
     fwd.normalize();
     const right = new THREE.Vector3().crossVectors(fwd, new THREE.Vector3(0,1,0)).normalize();
 
-    // движение: флип по оси Y — теперь вверх на стике = движение вперёд
-    rig.object3D.position.x += (right.x * moveX + fwd.x * moveY) * moveSpeed;
-    rig.object3D.position.z += (right.z * moveX + fwd.z * moveY) * moveSpeed;
+    // движение: инвертируем только влево/вправо
+    rig.object3D.position.x += (-right.x * moveX + fwd.x * moveY) * moveSpeed;
+    rig.object3D.position.z += (-right.z * moveX + fwd.z * moveY) * moveSpeed;
 
-    // вращение камеры: флип по оси Y — теперь вверх на стике = смотреть вниз
+    // вращение камеры: вверх стика = смотреть вниз
     const lc = camEl.components['look-controls'];
     if (lc) {
       lc.yawObject.rotation.y -= rotX * rotSpeed;
-      lc.pitchObject.rotation.x -= rotY * rotSpeed; // инвертируем направление
+      lc.pitchObject.rotation.x -= rotY * rotSpeed;
       const lim = Math.PI / 2 - 0.01;
       lc.pitchObject.rotation.x = Math.max(-lim, Math.min(lim, lc.pitchObject.rotation.x));
     }
