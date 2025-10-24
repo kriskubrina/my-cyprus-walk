@@ -1305,7 +1305,8 @@ in a place once unfamiliar, but now home.</p>`;
     camEl.object3D.getWorldDirection(fwd);
     fwd.y = 0;
     fwd.normalize();
-    const right = new THREE.Vector3().crossVectors(fwd, new THREE.Vector3(0,1,0)).normalize();
+const up = new THREE.Vector3(0,1,0);
+const right = new THREE.Vector3().crossVectors(up, fwd).normalize();
 
     // движение: инвертируем только влево/вправо
     rig.object3D.position.x += (right.x * moveX + fwd.x * moveY) * moveSpeed;
