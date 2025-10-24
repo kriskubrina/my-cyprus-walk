@@ -1308,8 +1308,8 @@ in a place once unfamiliar, but now home.</p>`;
     const right = new THREE.Vector3().crossVectors(fwd, new THREE.Vector3(0,1,0)).normalize();
 
     // движение: инвертируем только влево/вправо
-    rig.object3D.position.x += (-right.x * moveX + fwd.x * moveY) * moveSpeed;
-    rig.object3D.position.z += (-right.z * moveX + fwd.z * moveY) * moveSpeed;
+    rig.object3D.position.x += (right.x * moveX + fwd.x * moveY) * moveSpeed;
+    rig.object3D.position.z += (right.z * moveX + fwd.z * moveY) * moveSpeed;
 
     // вращение камеры: вверх стика = смотреть вниз
     const lc = camEl.components['look-controls'];
