@@ -877,7 +877,7 @@ AFRAME.registerComponent('plane-video-once',{
 AFRAME.registerComponent('clamp-rect',{
   schema:{ minX:{default:-25}, maxX:{default:25}, minZ:{default:-10}, maxZ:{default:10} },
   tick(){
-    const p=(isTouch?rig:camEl).object3D.position;
+    const p = rig.object3D.position;
     if (p.x < this.data.minX) p.x = this.data.minX;
     if (p.x > this.data.maxX) p.x = this.data.maxX;
     if (p.z < this.data.minZ) p.z = this.data.minZ;
@@ -1329,34 +1329,7 @@ const right = new THREE.Vector3().crossVectors(up, fwd).normalize();
   loop();
 })();
 </script>
-  <script>
-AFRAME.registerComponent('clamp-rect', {
-  schema: {
-    minX: { default: -25 },
-    maxX: { default: 25 },
-    minZ: { default: -10 },
-    maxZ: { default: 10 }
-  },
-  tick: function () {
-    // Определяем активный объект (на мобиле двигается rig, на десктопе и геймпаде — тоже rig)
-    const mover = document.getElementById('rig') || document.getElementById('player');
-    if (!mover) return;
-
-    const p = mover.object3D.position;
-
-    if (p.x < this.data.minX) p.x = this.data.minX;
-    if (p.x > this.data.maxX) p.x = this.data.maxX;
-    if (p.z < this.data.minZ) p.z = this.data.minZ;
-    if (p.z > this.data.maxZ) p.z = this.data.maxZ;
-  }
-});
-
-// Активируем компонент на сцене
-document.querySelector('a-scene')
-  .setAttribute('clamp-rect', 'minX:-25; maxX:25; minZ:-10; maxZ:10');
-</script>
-
-
+ 
 
 </body>
 </html>
