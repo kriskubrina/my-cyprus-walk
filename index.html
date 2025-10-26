@@ -875,16 +875,16 @@ AFRAME.registerComponent('plane-video-once',{
 
 /* ========== ограничение прямоугольником: X[-25,25], Z[-10,10] ========== */
 AFRAME.registerComponent('clamp-rect',{
-  schema:{ minX:{default:-25}, maxX:{default:25}, minZ:{default:-10}, maxZ:{default:10} },
+  schema:{ minX:{default:-35}, maxX:{default:35}, minZ:{default:-20}, maxZ:{default:20} },
   tick(){
-    const p=(isTouch?rig:camEl).object3D.position;
+    const p = rig.object3D.position;
     if (p.x < this.data.minX) p.x = this.data.minX;
     if (p.x > this.data.maxX) p.x = this.data.maxX;
     if (p.z < this.data.minZ) p.z = this.data.minZ;
     if (p.z > this.data.maxZ) p.z = this.data.maxZ;
   }
 });
-document.querySelector('a-scene').setAttribute('clamp-rect','minX:-25; maxX:25; minZ:-10; maxZ:10');
+document.querySelector('a-scene').setAttribute('clamp-rect','minX:-35; maxX:35; minZ:-20; maxZ:20');
 
 /* ========== Proximity Checker ========== */
 AFRAME.registerComponent('proximity-checker', {
@@ -1280,6 +1280,56 @@ in a place once unfamiliar, but now home.</p>`;
         img.src = skyTex.src;
       });
     })();
-  </script>
+  </script><script>
+(function() {
+  const rig = document.getElementById('rig');
+  const camEl = document.getElementById('player');
+  const moveSpeed = 0.07; // скорость перемещения
+  const rotSpeed = 0.035; // скорость вращения камеры
+
+  function tickGamepad() {
+    const pads = navigator.getGamepads ? navigator.getGamepads() : [];
+    const gp = pads[0];
+    if (!gp) return;
+
+    // левый стик — движение
+    const moveX = gp.axes[0] || 0;  // влево/вправо
+    const moveY = gp.axes[1] || 0;  // вперёд/назад
+
+    // правый стик — поворот камеры
+    const rotX = gp.axes[2] || 0;
+    const rotY = gp.axes[3] || 0;
+
+    // направление вперёд и вправо относительно камеры
+    const fwd = new THREE.Vector3();
+    camEl.object3D.getWorldDirection(fwd);
+    fwd.y = 0;
+    fwd.normalize();
+const up = new THREE.Vector3(0,1,0);
+const right = new THREE.Vector3().crossVectors(up, fwd).normalize();
+
+    // движение: инвертируем только влево/вправо
+    rig.object3D.position.x += (right.x * moveX + fwd.x * moveY) * moveSpeed;
+    rig.object3D.position.z += (right.z * moveX + fwd.z * moveY) * moveSpeed;
+
+    // вращение камеры: вверх стика = смотреть вниз
+    const lc = camEl.components['look-controls'];
+    if (lc) {
+      lc.yawObject.rotation.y -= rotX * rotSpeed;
+      lc.pitchObject.rotation.x -= rotY * rotSpeed;
+      const lim = Math.PI / 2 - 0.01;
+      lc.pitchObject.rotation.x = Math.max(-lim, Math.min(lim, lc.pitchObject.rotation.x));
+    }
+  }
+
+  function loop() {
+    tickGamepad();
+    requestAnimationFrame(loop);
+  }
+  loop();
+})();
+</script>
+ 
+
 </body>
 </html>
