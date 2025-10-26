@@ -5,7 +5,8 @@
 <head>
   <meta charset="utf-8" />
   <title>My Cyprus Walk</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+
   <meta name="theme-color" content="#000000" />
   <link rel="icon" type="image/x-icon" href="favicon.ico">
   <script src="https://cdn.jsdelivr.net/npm/aframe@1.7.0/dist/aframe.min.js"></script>
@@ -169,7 +170,12 @@
     @media (max-width: 768px) {
       .about-panel { height: var(--panel-height-mobile); }
       .about-content { font-size: 2.2vh; }
-    }
+    }/* компенсируем безопасную зону (notch) на айфонах */
+#about-trigger,
+#cassette-ring {
+  top: calc(12px + env(safe-area-inset-top));
+}
+
   </style>
   <!-- Google tag (gtag.js) -->
 <script async src="https://www.googletagmanager.com/gtag/js?id=G-X45BKDJPJ1"></script>
@@ -316,6 +322,19 @@ const streetEntity = document.getElementById('streetEntity');
 const boot  = document.getElementById('boot');
 const cassetteHint = document.getElementById('cassette-hint');
 const cassetteRing = document.getElementById('cassette-ring');
+    // улучшенная эмуляция клика по кассете (если модель ещё не загрузилась)
+  function emulateCassetteClick(retry = 0) {
+    const clickables = document.querySelectorAll('.clickable');
+    if (clickables.length > 0) {
+      clickables[0].dispatchEvent(new Event('click', { bubbles: true }));
+      console.log('📼 Cassette clicked by gamepad');
+    } else if (retry < 10) {
+      setTimeout(() => emulateCassetteClick(retry + 1), 300);
+    } else {
+      console.warn('⚠️ No clickable cassette found after retries');
+    }
+  }
+
 
 function whenModelReady(cb){
   const run = () => { const root = streetEntity.getObject3D('mesh'); if (root) cb(root); };
@@ -1327,6 +1346,9 @@ in a place once unfamiliar, but now home.</p>`;
   // edge-детекторы для кнопок
   let prevY = false;
   let prevX = false;
+  let prevLeft = false;
+let prevRight = false;
+
 
   // --- функции ---
 
@@ -1337,14 +1359,7 @@ in a place once unfamiliar, but now home.</p>`;
     aboutOverlay.setAttribute('aria-hidden', aboutOpen ? 'false' : 'true');
   };
 
-  function emulateCassetteClick() {
-    const clickables = document.querySelectorAll('.clickable');
-    if (clickables.length > 0) {
-      clickables[0].dispatchEvent(new Event('click', { bubbles: true }));
-    } else {
-      setTimeout(emulateCassetteClick, 300); // повтор, если модель ещё не готова
-    }
-  }
+
 
   function changeLang(dir) {
     const langs = ['en','ru','gr'];
@@ -1381,8 +1396,15 @@ in a place once unfamiliar, but now home.</p>`;
       if (Math.abs(rotY) > 0.1) aboutInner.scrollTop += rotY * 20;
 
       // переключение языка ← →
-      if (gp.buttons[14]?.pressed || rotX < -0.5) changeLang(-1);
-      if (gp.buttons[15]?.pressed || rotX > 0.5)  changeLang(1);
+const leftPressed  = gp.buttons[14]?.pressed || rotX < -0.5;
+const rightPressed = gp.buttons[15]?.pressed || rotX > 0.5;
+
+if (leftPressed && !prevLeft)  { changeLang(-1); }
+if (rightPressed && !prevRight){ changeLang(1); }
+
+prevLeft  = leftPressed;
+prevRight = rightPressed;
+
 
       if (btnY && !prevY) toggleAbout();
       prevY = btnY;
@@ -1391,7 +1413,7 @@ in a place once unfamiliar, but now home.</p>`;
 
     // кнопки вне about
     if (btnY && !prevY) toggleAbout();
-    if (btnX && !prevX) emulateCassetteClick();
+    if (btnX && !prevX) emulateCassetteClick(0);
     prevY = btnY;
     prevX = btnX;
 
