@@ -1,3 +1,5 @@
+на вот код сам сиди проверяй
+
 <!DOCTYPE html>
 <html lang="ru">
 <head>
@@ -1301,27 +1303,82 @@ in a place once unfamiliar, but now home.</p>`;
     })();
   </script><script>
 (function() {
-
-  const rig = document.getElementById('rig');
+  const rig   = document.getElementById('rig');
   const camEl = document.getElementById('player');
+  const aboutOverlay = document.getElementById('about-overlay');
+  const aboutInner = document.querySelector('.about-inner');
+  const cassetteRing = document.getElementById('cassette-ring');
 
-  const moveSpeed = 0.07;   // скорость перемещения
-  const rotSpeed  = 0.035;  // скорость вращения камеры
+  const moveSpeed = 0.07;
+  const rotSpeed  = 0.035;
+
+  let lastPad = null;
+  let loopStarted = false;
+  let aboutOpen = false;
+
+  // вспомогательные
+  const toggleAbout = () => {
+    if (!aboutOverlay) return;
+    aboutOpen = !aboutOpen;
+    aboutOverlay.classList.toggle('open', aboutOpen);
+    aboutOverlay.setAttribute('aria-hidden', aboutOpen ? 'false' : 'true');
+  };
+
+  function emulateCassetteClick() {
+    const ring = cassetteRing;
+    if (ring && ring.style.display !== 'none') {
+      const evt = new Event('click', { bubbles: true });
+      // ищем круг "clickable" созданный в cassette-setup
+      const clickables = document.querySelectorAll('.clickable');
+      if (clickables.length > 0) clickables[0].dispatchEvent(evt);
+    }
+  }
+
+  function getPad() {
+    const pads = navigator.getGamepads ? navigator.getGamepads() : [];
+    for (const p of pads) if (p && p.connected) return (lastPad = p);
+    return lastPad;
+  }
 
   function tickGamepad() {
-    const pads = navigator.getGamepads ? navigator.getGamepads() : [];
-    const gp = pads[0];
+    const gp = getPad();
     if (!gp) return;
 
-    // левый стик — движение
-    const moveX = gp.axes[0] || 0;  // влево/вправо
-    const moveY = gp.axes[1] || 0;  // вперёд/назад
-
-    // правый стик — поворот камеры
+    const moveX = gp.axes[0] || 0;
+    const moveY = gp.axes[1] || 0;
     const rotX = gp.axes[2] || 0;
     const rotY = gp.axes[3] || 0;
 
-    // направление вперёд и вправо относительно камеры
+    // ——— КНОПКИ ———
+    const btnA = gp.buttons[0]?.pressed; // A
+    const btnB = gp.buttons[1]?.pressed; // B
+    const btnX = gp.buttons[2]?.pressed; // X
+    const btnY = gp.buttons[3]?.pressed; // Y
+
+    // если открыто окно About — скроллим
+    if (aboutOpen && aboutInner) {
+      if (Math.abs(rotY) > 0.1) {
+        aboutInner.scrollTop += rotY * 20;
+      }
+      if (btnY) toggleAbout(); // закрыть Y
+      return; // замораживаем управление сценой, пока открыто
+    }
+
+    // A — пока свободна
+    // X → запустить кассету
+    if (btnX) emulateCassetteClick();
+    // Y → открыть/закрыть about
+    if (btnY) toggleAbout();
+
+    // если стики не двигаются — выходим
+    if (
+      Math.abs(moveX) < 0.1 &&
+      Math.abs(moveY) < 0.1 &&
+      Math.abs(rotX) < 0.1 &&
+      Math.abs(rotY) < 0.1
+    ) return;
+
+    // направление камеры
     const fwd = new THREE.Vector3();
     camEl.object3D.getWorldDirection(fwd);
     fwd.y = 0;
@@ -1330,16 +1387,15 @@ in a place once unfamiliar, but now home.</p>`;
     const up = new THREE.Vector3(0, 1, 0);
     const right = new THREE.Vector3().crossVectors(up, fwd).normalize();
 
-    // движение: инвертируем только влево/вправо
+    // движение
     rig.object3D.position.x += (right.x * moveX + fwd.x * moveY) * moveSpeed;
     rig.object3D.position.z += (right.z * moveX + fwd.z * moveY) * moveSpeed;
 
-    // вращение камеры: вверх стика = смотреть вниз
+    // вращение камеры
     const lc = camEl.components['look-controls'];
-    if (lc) {
+    if (lc && lc.yawObject && lc.pitchObject) {
       lc.yawObject.rotation.y -= rotX * rotSpeed;
       lc.pitchObject.rotation.x -= rotY * rotSpeed;
-
       const lim = Math.PI / 2 - 0.01;
       lc.pitchObject.rotation.x = Math.max(-lim, Math.min(lim, lc.pitchObject.rotation.x));
     }
@@ -1350,11 +1406,40 @@ in a place once unfamiliar, but now home.</p>`;
     requestAnimationFrame(loop);
   }
 
-  loop();
+  function tryStartLoop() {
+    if (loopStarted) return;
+    const lc = camEl.components['look-controls'];
+    if (lc && lc.yawObject && lc.pitchObject) {
+      loopStarted = true;
+      console.log('✅ look-controls ready — starting hybrid gamepad control');
+      loop();
+    }
+  }
 
+  if (camEl.components['look-controls']) {
+    tryStartLoop();
+  } else {
+    camEl.addEventListener('componentinitialized', e => {
+      if (e.detail.name === 'look-controls') tryStartLoop();
+    });
+  }
+
+  window.addEventListener('gamepadconnected', e =>
+    console.log('🎮 connected:', e.gamepad.id)
+  );
+  window.addEventListener('gamepaddisconnected', e =>
+    console.log('⚠️ disconnected:', e.gamepad.id)
+  );
 })();
 </script>
 
+<script>
+// перезагрузка каждые 10 минут (600 000 миллисекунд)
+setTimeout(() => {
+  console.log('🔁 Автоматическая перезагрузка страницы');
+  location.reload();
+}, 600000);
+</script>
 
 
 </body>
