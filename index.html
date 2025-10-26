@@ -1368,6 +1368,15 @@ let prevRight = false;
 
   // --- основной цикл ---
   function tickGamepad() {
+    // --- диагностика кнопок ---
+if (Math.random() < 0.02) { // не чаще, чтобы не заспамить консоль
+  const gp = navigator.getGamepads()[0];
+  if (gp) {
+    const states = gp.buttons.map((b, i) => (b.pressed ? i : null)).filter(v => v !== null);
+    if (states.length) console.log('Pressed buttons:', states);
+  }
+}
+
     const gp = getPad();
     if (!gp) return;
 
