@@ -12,6 +12,15 @@
   <script src="https://cdn.jsdelivr.net/npm/nipplejs@0.10.1/dist/nipplejs.min.js"></script>
   <style>
     *{ -webkit-tap-highlight-color:transparent; }
+    html, body, a-scene {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+  background: #000;
+}
+
     html,body{ margin:0; height:100%; background:#000; overflow:hidden; }
     a-loading-screen{ display:none !important; }
     .a-enter-vr-button { display: none !important; }
@@ -1311,12 +1320,16 @@ in a place once unfamiliar, but now home.</p>`;
 
   const moveSpeed = 0.07;
   const rotSpeed  = 0.035;
-
   let lastPad = null;
   let loopStarted = false;
   let aboutOpen = false;
 
-  // вспомогательные
+  // edge-детекторы для кнопок
+  let prevY = false;
+  let prevX = false;
+
+  // --- функции ---
+
   const toggleAbout = () => {
     if (!aboutOverlay) return;
     aboutOpen = !aboutOpen;
@@ -1325,13 +1338,21 @@ in a place once unfamiliar, but now home.</p>`;
   };
 
   function emulateCassetteClick() {
-    const ring = cassetteRing;
-    if (ring && ring.style.display !== 'none') {
-      const evt = new Event('click', { bubbles: true });
-      // ищем круг "clickable" созданный в cassette-setup
-      const clickables = document.querySelectorAll('.clickable');
-      if (clickables.length > 0) clickables[0].dispatchEvent(evt);
+    const clickables = document.querySelectorAll('.clickable');
+    if (clickables.length > 0) {
+      clickables[0].dispatchEvent(new Event('click', { bubbles: true }));
+    } else {
+      setTimeout(emulateCassetteClick, 300); // повтор, если модель ещё не готова
     }
+  }
+
+  function changeLang(dir) {
+    const langs = ['en','ru','gr'];
+    const active = document.querySelector('[aria-pressed="true"]');
+    if (!active) return;
+    let idx = langs.indexOf(active.id.split('-').pop());
+    idx = (idx + dir + langs.length) % langs.length;
+    document.getElementById('about-lang-' + langs[idx]).click();
   }
 
   function getPad() {
@@ -1340,37 +1361,41 @@ in a place once unfamiliar, but now home.</p>`;
     return lastPad;
   }
 
+  // --- основной цикл ---
   function tickGamepad() {
     const gp = getPad();
     if (!gp) return;
 
     const moveX = gp.axes[0] || 0;
     const moveY = gp.axes[1] || 0;
-    const rotX = gp.axes[2] || 0;
-    const rotY = gp.axes[3] || 0;
+    const rotX  = gp.axes[2] || 0;
+    const rotY  = gp.axes[3] || 0;
 
-    // ——— КНОПКИ ———
     const btnA = gp.buttons[0]?.pressed; // A
     const btnB = gp.buttons[1]?.pressed; // B
     const btnX = gp.buttons[2]?.pressed; // X
     const btnY = gp.buttons[3]?.pressed; // Y
 
-    // если открыто окно About — скроллим
+    // about открыт → управление им
     if (aboutOpen && aboutInner) {
-      if (Math.abs(rotY) > 0.1) {
-        aboutInner.scrollTop += rotY * 20;
-      }
-      if (btnY) toggleAbout(); // закрыть Y
-      return; // замораживаем управление сценой, пока открыто
+      if (Math.abs(rotY) > 0.1) aboutInner.scrollTop += rotY * 20;
+
+      // переключение языка ← →
+      if (gp.buttons[14]?.pressed || rotX < -0.5) changeLang(-1);
+      if (gp.buttons[15]?.pressed || rotX > 0.5)  changeLang(1);
+
+      if (btnY && !prevY) toggleAbout();
+      prevY = btnY;
+      return;
     }
 
-    // A — пока свободна
-    // X → запустить кассету
-    if (btnX) emulateCassetteClick();
-    // Y → открыть/закрыть about
-    if (btnY) toggleAbout();
+    // кнопки вне about
+    if (btnY && !prevY) toggleAbout();
+    if (btnX && !prevX) emulateCassetteClick();
+    prevY = btnY;
+    prevX = btnX;
 
-    // если стики не двигаются — выходим
+    // нет движения → выход
     if (
       Math.abs(moveX) < 0.1 &&
       Math.abs(moveY) < 0.1 &&
@@ -1430,15 +1455,14 @@ in a place once unfamiliar, but now home.</p>`;
   window.addEventListener('gamepaddisconnected', e =>
     console.log('⚠️ disconnected:', e.gamepad.id)
   );
-})();
-</script>
 
-<script>
-// перезагрузка каждые 10 минут (600 000 миллисекунд)
-setTimeout(() => {
-  console.log('🔁 Автоматическая перезагрузка страницы');
-  location.reload();
-}, 600000);
+  // 🔁 авто-перезагрузка каждые 10 минут
+  setTimeout(() => {
+    console.log('🔁 auto reload');
+    location.reload();
+  }, 600000);
+
+})();
 </script>
 
 
