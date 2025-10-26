@@ -1413,14 +1413,27 @@ prevRight = rightPressed;
     // кнопки вне about
     if (btnY && !prevY) toggleAbout();
 if (btnX && !prevX) {
-  const cassette = document.querySelector('.clickable');
-  if (cassette) {
-    cassette.dispatchEvent(new Event('click', { bubbles: true }));
-    console.log('📼 Cassette clicked via gamepad X');
-  } else {
-    console.warn('⚠️ Cassette clickable not found');
+  console.log('🎮 Gamepad X pressed — triggering cassette start manually');
+  unlockMedia();
+  try {
+    startBackgroundFrom9s();
+    document.getElementById('mute').style.display = 'block';
+    cassetteHint.style.display = 'none';
+    cassetteRing.style.display = 'none';
+
+    const cassetteComp = document.querySelector('[cassette-setup]').components['cassette-setup'];
+    if (cassetteComp && cassetteComp.cassette) {
+      cassetteComp.shrink = true;
+      cassetteComp.shrinkStart = performance.now();
+      console.log('✅ Cassette animation triggered directly');
+    } else {
+      console.warn('⚠️ Cassette component not ready');
+    }
+  } catch (e) {
+    console.error('Cassette start failed:', e);
   }
 }
+
 prevX = btnX;
 
 
