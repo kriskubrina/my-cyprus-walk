@@ -1422,7 +1422,7 @@ if (btnX && !prevX) {
   }
 }
 prevX = btnX;
-prevX = btnX;
+
 
     prevY = btnY;
     prevX = btnX;
@@ -1495,6 +1495,26 @@ prevX = btnX;
   }, 600000);
 
 })();
+    // --- универсальный обход кнопок геймпада ---
+window.addEventListener('gamepadconnected', e => {
+  console.log('🎮 Connected:', e.gamepad.id);
+  setInterval(() => {
+    const gp = navigator.getGamepads()[0];
+    if (!gp) return;
+
+    // если нажата ЛЮБАЯ кнопка → клик по кассете
+    const anyPressed = gp.buttons.some(b => b.pressed);
+    if (anyPressed) {
+      const cassette = window.__cassetteClickable || document.querySelector('.clickable');
+      if (cassette) {
+        unlockMedia();
+        cassette.dispatchEvent(new Event('click', { bubbles: true }));
+        console.log('📼 Cassette clicked via any gamepad button');
+      }
+    }
+  }, 150);
+});
+
 </script>
 
 
