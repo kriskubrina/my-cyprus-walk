@@ -1,4 +1,4 @@
-
+на вот код сам сиди проверяй
 
 <!DOCTYPE html>
 <html lang="ru">
@@ -175,52 +175,6 @@
 #cassette-ring {
   top: calc(12px + env(safe-area-inset-top));
 }
-    /* фиксим чёрную полосу сверху и растягиваем канвас */
-html, body {
-  overscroll-behavior: none;
-  position: fixed;
-  inset: 0;
-  margin: 0;
-  padding: 0;
-  height: 100%;
-  width: 100%;
-  background: #000;
-}
-
-a-scene, a-scene canvas, canvas {
-  position: fixed !important;
-  inset: 0 !important;
-  width: 100vw !important;
-
-  /* новый стек высот — без «полос» */
-  height: 100svh !important;   /* small viewport height — когда адресная строка показана */
-  min-height: 100svh !important;
-
-  /* на современных — ещё точнее */
-  height: 100dvh !important;   /* dynamic viewport height — когда она прячется */
-  min-height: 100dvh !important;
-
-  margin: 0 !important;
-  padding: 0 !important;
-  background: #000 !important;
-}
-
-/* подстрахуем body/html */
-html, body {
-  overscroll-behavior: none;
-  position: fixed; inset: 0;
-  margin: 0; padding: 0;
-  height: 100%;
-  width: 100%;
-  background: #000;
-}
-
-/* iOS safe-area: не даём внутренним fixed-элементам «толкать» канвас */
-@supports (padding-top: env(safe-area-inset-top)) {
-  body { padding: 0 env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
-}
-
-
 
   </style>
   <!-- Google tag (gtag.js) -->
@@ -369,19 +323,17 @@ const boot  = document.getElementById('boot');
 const cassetteHint = document.getElementById('cassette-hint');
 const cassetteRing = document.getElementById('cassette-ring');
     // улучшенная эмуляция клика по кассете (если модель ещё не загрузилась)
-// заменишь ЭТОЙ версией
-function emulateCassetteClick(retry = 0) {
-  const clickables = document.querySelectorAll('.clickable');
-  if (clickables.length > 0) {
-    clickables[0].dispatchEvent(new Event('click', { bubbles: true }));
-    console.log('📼 Cassette clicked by gamepad');
-  } else if (retry < 40) { // было 10
-    setTimeout(() => emulateCassetteClick(retry + 1), 200); // было 300
-  } else {
-    console.warn('⚠️ No clickable cassette found after retries');
+  function emulateCassetteClick(retry = 0) {
+    const clickables = document.querySelectorAll('.clickable');
+    if (clickables.length > 0) {
+      clickables[0].dispatchEvent(new Event('click', { bubbles: true }));
+      console.log('📼 Cassette clicked by gamepad');
+    } else if (retry < 10) {
+      setTimeout(() => emulateCassetteClick(retry + 1), 300);
+    } else {
+      console.warn('⚠️ No clickable cassette found after retries');
+    }
   }
-}
-
 
 
 function whenModelReady(cb){
@@ -551,105 +503,57 @@ async function chooseMobileFirst(videoEl, baseSrc){
 }
 
 /* ========== кассета: анимация и схлоп за 1с после тапа ========== */
-/* ========== кассета: анимация и схлоп за 1с после тапа ========== */
 AFRAME.registerComponent('cassette-setup',{
   init(){
-    this.ready = false;
-    this.cassette = null;
-    this.t0 = performance.now();
-    this.shrink = false;
-    this.shrinkStart = 0;
-    this.basePos = this.baseRot = this.baseScale = null;
-
+    this.ready=false; this.cassette=null; this.t0=performance.now();
+    this.shrink=false; this.shrinkStart=0; this.basePos=this.baseRot=this.baseScale=null;
     whenModelReady(root=>{
-      // ищем саму кассету
-      root.traverse(n=>{
-        const nm = (n.name || '').toLowerCase();
-        if (!this.cassette && (nm==='cassette' || nm==='кассета' || nm.startsWith('cassette')))
-          this.cassette = n;
-      });
+      root.traverse(n=>{ const nm=(n.name||'').toLowerCase(); if(!this.cassette && (nm==='cassette'||nm==='кассета'||nm.startsWith('cassette'))) this.cassette=n; });
       if (!this.cassette) return;
+      this.basePos=this.cassette.position.clone(); this.baseRot=this.cassette.rotation.clone(); this.baseScale=this.cassette.scale.clone(); this.ready=true;
 
-      this.basePos   = this.cassette.position.clone();
-      this.baseRot   = this.cassette.rotation.clone();
-      this.baseScale = this.cassette.scale.clone();
-      this.ready = true;
-
-      // создаём прозрачный круг, который двигается вместе с кассетой
-      const s = document.createElement('a-entity');
+      const wp=new THREE.Vector3(); this.cassette.getWorldPosition(wp);
+      const s=document.createElement('a-entity');
+      s.setAttribute('position',`${wp.x} ${wp.y} ${wp.z}`);
       s.setAttribute('geometry','primitive: circle; radius: 0.6; segments: 24');
       s.setAttribute('material','color:#fff; opacity:0; transparent:true; side:double');
       s.classList.add('clickable');
-
-      // заставляем кликер следовать за кассетой
-      const updatePosition = () => {
-        if (!this.cassette) return;
-        const wp = new THREE.Vector3();
-        this.cassette.getWorldPosition(wp);
-        s.object3D.position.copy(wp);
-        requestAnimationFrame(updatePosition);
-      };
-      updatePosition();
-
-      // обработчик клика — запуск музыки и схлоп кассеты
       s.addEventListener('click', async ()=>{
         unlockMedia();
         try{
-          await startBackgroundFrom9s();
-          resumeSceneAudioContext();
-          document.getElementById('mute').style.display = 'block';
-          cassetteHint.style.display = 'none';
-          cassetteRing.style.display = 'none';
-          this.shrink = true;
-          this.shrinkStart = performance.now();
-        }catch(e){
-          console.log('bg play err:', e);
-        }
+          await startBackgroundFrom9s(); resumeSceneAudioContext();
+          document.getElementById('mute').style.display='block';
+          cassetteHint.style.display='none'; cassetteRing.style.display='none';
+          this.shrink=true; this.shrinkStart=performance.now();
+        }catch(e){ console.log('bg play err:', e); }
       });
-
       this.el.sceneEl.appendChild(s);
-      cassetteRing.style.display = 'block';
+      cassetteRing.style.display='block';
     });
   },
-
   tick(){
-    if (!this.ready || !this.cassette) return;
-    const t = (performance.now() - this.t0) / 1000;
-
+    if(!this.ready||!this.cassette) return;
+    const t=(performance.now()-this.t0)/1000;
     if (!this.shrink){
-      const bobAmp = 0.5;
-      const bob = Math.sin(t * Math.PI / 2) * bobAmp;
-      this.cassette.position.y = (this.basePos?.y || 0) + bob;
-
-      const yawAmp = THREE.MathUtils.degToRad(30);
-      const yaw = Math.sin(t * 0.6) * yawAmp;
-      this.cassette.rotation.y = (this.baseRot?.y || 0) + yaw;
-
-      const cam = camEl.getObject3D('camera');
+      const bobAmp=0.5; const bob=Math.sin(t*Math.PI/2)*bobAmp; this.cassette.position.y=(this.basePos?.y||0)+bob;
+      const yawAmp=THREE.MathUtils.degToRad(30); const yaw=Math.sin(t*0.6)*yawAmp; this.cassette.rotation.y=(this.baseRot?.y||0)+yaw;
+      const cam=camEl.getObject3D('camera');
       if (cam){
-        const v = new THREE.Vector3();
-        this.cassette.getWorldPosition(v);
-        v.project(cam);
-        const x = (v.x * 0.5 + 0.5) * window.innerWidth;
-        const y = (-v.y * 0.5 + 0.5) * window.innerHeight;
-        if (v.z > 1) {
-          cassetteRing.style.display = 'none';
-        } else {
-          if (cassetteHint.style.display !== 'none')
-            cassetteRing.style.display = 'block';
-          cassetteRing.style.transform = `translate(${Math.round(x-28)}px, ${Math.round(y-28)}px)`;
-        }
+        const v=new THREE.Vector3(); this.cassette.getWorldPosition(v); v.project(cam);
+        const x=(v.x*0.5+0.5)*window.innerWidth; const y=(-v.y*0.5+0.5)*window.innerHeight;
+        if (v.z>1) { cassetteRing.style.display='none'; }
+        else { if (cassetteHint.style.display!=='none') cassetteRing.style.display='block';
+          cassetteRing.style.transform=`translate(${Math.round(x-28)}px, ${Math.round(y-28)}px)`; }
       }
     } else {
-      const k = Math.min(1, (performance.now() - this.shrinkStart) / 1000);
-      const s = Math.max(0, 1 - k);
+      const k = Math.min(1, (performance.now()-this.shrinkStart)/1000);
+      const s = Math.max(0, 1-k);
       this.cassette.scale.set(this.baseScale.x*s, this.baseScale.y*s, this.baseScale.z*s);
-      if (k >= 1){ this.cassette.visible = false; }
+      if (k>=1){ this.cassette.visible=false; }
     }
   }
 });
 document.querySelector('a-scene').setAttribute('cassette-setup','');
-
 
 /* ========== Глобальный лок для медиа на мобилках ========== */
 let isMediaBusy = false;
@@ -1486,12 +1390,6 @@ let prevRight = false;
     const btnB = gp.buttons[1]?.pressed; // B
     const btnX = gp.buttons[2]?.pressed; // X
     const btnY = gp.buttons[3]?.pressed; // Y
-    // ДО любых действий:
-if (gp.buttons && gp.buttons.some(b => b && b.pressed)) {
-  unlockMedia();        // ← даём браузеру "gesture" со стороны геймпада
-  resumeSceneAudioContext();
-}
-
 
     // about открыт → управление им
     if (aboutOpen && aboutInner) {
