@@ -848,8 +848,8 @@ AFRAME.registerComponent('plane-video-once',{
     const movingTrigs=document.getElementsByClassName('trigger-moving');
 
     ctx.clearRect(0,0,c.width,c.height);
-    ctx.lineWidth=1; ring(R,0.25); ring(R*0.66,0.18); ring(R*0.33,0.14);
-    ctx.fillStyle='#fff'; ctx.beginPath(); ctx.arc(cx,cy,Math.max(2,R*0.02),0,Math.PI*2); ctx.fill();
+    ctx.lineWidth=3; ring(R,0.25); ring(R*0.66,0.18); ring(R*0.33,0.14);
+    ctx.fillStyle='#fff'; ctx.beginPath(); ctx.arc(cx,cy,Math.max(3,R*0.03),0,Math.PI*2); ctx.fill();
 
     const worldNorth=new THREE.Vector3(0,0,-1);
     const nx=worldNorth.dot(tmpRight), nz=worldNorth.dot(tmpFwd);
@@ -872,7 +872,7 @@ AFRAME.registerComponent('plane-video-once',{
         const dx=tmpTp.x-tmpPos.x, dz=tmpTp.z-tmpPos.z;
         const lx=dx*tmpRight.x+dz*tmpRight.z; const lz=dx*tmpFwd.x+dz*tmpFwd.z;
         const d=Math.hypot(lx,lz); if(d>RADAR_RANGE) continue;
-        ctx.beginPath(); ctx.arc(cx-lx*s, cy+lz*s, Math.max(3,R*0.03), 0, Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.arc(cx-lx*s, cy+lz*s, Math.max(4,R*0.04), 0, Math.PI*2); ctx.fill();
       }
     }
     draw(popupTrigs,'#ff69b4'); // розовый — HUD
@@ -1303,41 +1303,96 @@ in a place once unfamiliar, but now home.</p>`;
 (function() {
   const rig = document.getElementById('rig');
   const camEl = document.getElementById('player');
-  const moveSpeed = 0.07; // скорость перемещения
-  const rotSpeed = 0.035; // скорость вращения камеры
+  const moveSpeed = 0.07;
+  const rotSpeed = 0.035;
 
+  // --- ссылки на элементы интерфейса ---
+  const aboutTrigger = document.getElementById('about-trigger');
+  const aboutOverlay = document.getElementById('about-overlay');
+  const cassetteHint = document.getElementById('cassette-hint');
+
+  // состояние окна About
+  let aboutOpen = false;
+
+  // =============================
+  // 1. авто-ресет каждые 10 минут
+  // =============================
+  setTimeout(() => location.reload(), 10 * 60 * 1000);
+
+  // =============================
+  // 2. функция клика по кассете
+  // =============================
+  function triggerCassetteClick() {
+    const circle = document.querySelector('a-entity[geometry="primitive: circle; radius: 0.6; segments: 24"]');
+    if (circle) circle.emit('click');
+  }
+
+  // =============================
+  // 3. переключение окна About
+  // =============================
+  function toggleAbout() {
+    if (!aboutOverlay) return;
+    if (aboutOverlay.classList.contains('open')) {
+      aboutOverlay.classList.remove('open');
+      aboutOverlay.setAttribute('aria-hidden', 'true');
+      aboutTrigger.setAttribute('aria-expanded', 'false');
+      aboutOpen = false;
+    } else {
+      aboutOverlay.classList.add('open');
+      aboutOverlay.setAttribute('aria-hidden', 'false');
+      aboutTrigger.setAttribute('aria-expanded', 'true');
+      aboutOpen = true;
+    }
+  }
+
+  // =============================
+  // 4. геймпад
+  // =============================
   function tickGamepad() {
     const pads = navigator.getGamepads ? navigator.getGamepads() : [];
     const gp = pads[0];
     if (!gp) return;
 
-    // левый стик — движение
-    const moveX = gp.axes[0] || 0;  // влево/вправо
-    const moveY = gp.axes[1] || 0;  // вперёд/назад
+    // движение
+    const moveX = gp.axes[0] || 0;
+    const moveY = gp.axes[1] || 0;
+    const rotX  = gp.axes[2] || 0;
+    const rotY  = gp.axes[3] || 0;
 
-    // правый стик — поворот камеры
-    const rotX = gp.axes[2] || 0;
-    const rotY = gp.axes[3] || 0;
-
-    // направление вперёд и вправо относительно камеры
     const fwd = new THREE.Vector3();
     camEl.object3D.getWorldDirection(fwd);
-    fwd.y = 0;
-    fwd.normalize();
-const up = new THREE.Vector3(0,1,0);
-const right = new THREE.Vector3().crossVectors(up, fwd).normalize();
+    fwd.y = 0; fwd.normalize();
+    const up = new THREE.Vector3(0,1,0);
+    const right = new THREE.Vector3().crossVectors(up, fwd).normalize();
 
-    // движение: инвертируем только влево/вправо
     rig.object3D.position.x += (right.x * moveX + fwd.x * moveY) * moveSpeed;
     rig.object3D.position.z += (right.z * moveX + fwd.z * moveY) * moveSpeed;
 
-    // вращение камеры: вверх стика = смотреть вниз
     const lc = camEl.components['look-controls'];
     if (lc) {
       lc.yawObject.rotation.y -= rotX * rotSpeed;
       lc.pitchObject.rotation.x -= rotY * rotSpeed;
       const lim = Math.PI / 2 - 0.01;
       lc.pitchObject.rotation.x = Math.max(-lim, Math.min(lim, lc.pitchObject.rotation.x));
+    }
+
+    // ===== КНОПКИ =====
+    // стандарт PlayStation layout: 0=✕, 1=◯, 2=▢, 3=△
+    if (gp.buttons[3]?.pressed && !aboutOpen) { // треугольник → открыть About
+      toggleAbout();
+    } else if (gp.buttons[3] && !gp.buttons[3].pressed && aboutOpen) {
+      // отпустили треугольник — закроем
+      toggleAbout();
+    }
+
+    if (gp.buttons[0]?.pressed) { // ✕ → клик по кассете
+      triggerCassetteClick();
+    }
+
+    // опционально: если About открыт — можно прокручивать стрелками
+    if (aboutOpen && Math.abs(rotY) > 0.15) {
+      const panel = aboutOverlay.querySelector('.about-inner');
+      if (panel) panel.scrollTop += rotY * 12;
     }
   }
 
@@ -1348,6 +1403,7 @@ const right = new THREE.Vector3().crossVectors(up, fwd).normalize();
   loop();
 })();
 </script>
+
  
 
 </body>
