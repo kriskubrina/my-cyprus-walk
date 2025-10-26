@@ -235,6 +235,8 @@
     <!-- сцена -->
     <a-asset-item id="world" src="assets/models/limassol-walk.glb"></a-asset-item>
     <a-asset-item id="movingObject" src="assets/models/moving.glb"></a-asset-item>
+    <a-asset-item id="colaCat" src="assets/models/Cola_Cat.glb"></a-asset-item>
+
 
     <!-- HUD-видео и общий мобильный видео-элемент для плейнов -->
     <video id="popupVideo" preload="metadata" playsinline webkit-playsinline crossorigin="anonymous"></video>
@@ -269,6 +271,13 @@
 
   <a-entity id="moving-object" moving-object-logic gltf-model="#movingObject" scale="0.4 0.4 0.4" rotation="0 -90 0" position="0 -1000 0"></a-entity>
   <a-entity id="streetEntity" gltf-model="#world" position="0 0 0"></a-entity>
+  <a-entity id="colaCatEntity" 
+          gltf-model="#colaCat"
+          position="-2 0 4.2"
+          scale="1 1 1"
+          rotation="0 180 0">
+</a-entity>
+
 </a-scene>
 
 <div id="popup">
@@ -1033,6 +1042,17 @@ AFRAME.registerComponent('trigger-director',{
           e.setAttribute('sound', `src:#${p.audioId}; positional:false`);
         }
       });
+// Cola cat popup
+const colaCatNode = document.getElementById('colaCatEntity');
+if (colaCatNode) {
+  const e = document.createElement('a-entity');
+  e.classList.add('trigger-popup', 'triggerable');
+  e.dataset.radius = 2.0;
+  e.setAttribute('position', '-2 0 4.2');
+  e.setAttribute('popup-video-hud', 'loops:1; side:left; src:assets/video/cola.mp4; audio:cola');
+  e.setAttribute('sound', 'src:#pharmaAudio; positional:false'); // можешь сменить трек при желании
+  scene.appendChild(e);
+}
 
       const taverna=findNodeByName(root,'taverna');
       if (taverna) makeAtNode(taverna,'trigger-reveal','reveal-node-rot-fade','targetName:gyros; spinDegPerSec:60; lifeMs:15000; fadeMs:800; soundId:gyrosAudio', 2.0);
