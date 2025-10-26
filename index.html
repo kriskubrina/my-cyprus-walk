@@ -1300,9 +1300,8 @@ in a place once unfamiliar, but now home.</p>`;
       });
     })();
   </script><script>
-    window.addEventListener('gamepadconnected', e => console.log('🎮 connected:', e.gamepad.id));
-
 (function() {
+
   const rig = document.getElementById('rig');
   const camEl = document.getElementById('player');
 
@@ -1314,11 +1313,11 @@ in a place once unfamiliar, but now home.</p>`;
     const gp = pads[0];
     if (!gp) return;
 
-    // --- левый стик: движение ---
-    const moveX = gp.axes[0] || 0; // влево / вправо
-    const moveY = gp.axes[1] || 0; // вперёд / назад
+    // левый стик — движение
+    const moveX = gp.axes[0] || 0;  // влево/вправо
+    const moveY = gp.axes[1] || 0;  // вперёд/назад
 
-    // --- правый стик: вращение камеры ---
+    // правый стик — поворот камеры
     const rotX = gp.axes[2] || 0;
     const rotY = gp.axes[3] || 0;
 
@@ -1331,11 +1330,11 @@ in a place once unfamiliar, but now home.</p>`;
     const up = new THREE.Vector3(0, 1, 0);
     const right = new THREE.Vector3().crossVectors(up, fwd).normalize();
 
-    // --- перемещение рига ---
+    // движение: инвертируем только влево/вправо
     rig.object3D.position.x += (right.x * moveX + fwd.x * moveY) * moveSpeed;
     rig.object3D.position.z += (right.z * moveX + fwd.z * moveY) * moveSpeed;
 
-    // --- вращение камеры ---
+    // вращение камеры: вверх стика = смотреть вниз
     const lc = camEl.components['look-controls'];
     if (lc) {
       lc.yawObject.rotation.y -= rotX * rotSpeed;
@@ -1352,8 +1351,10 @@ in a place once unfamiliar, but now home.</p>`;
   }
 
   loop();
+
 })();
 </script>
+
 
 
 </body>
