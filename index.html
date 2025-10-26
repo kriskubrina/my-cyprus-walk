@@ -273,7 +273,7 @@
   <a-entity id="streetEntity" gltf-model="#world" position="0 0 0"></a-entity>
   <a-entity id="colaCatEntity" 
           gltf-model="#colaCat"
-          position="2.814 1.2 4.785"
+          position="2.814 1.1 4.785"
           scale="1 1 1"
           rotation="0 180 0">
 </a-entity>
@@ -1042,16 +1042,29 @@ AFRAME.registerComponent('trigger-director',{
           e.setAttribute('sound', `src:#${p.audioId}; positional:false`);
         }
       });
-// Cola cat popup
+// Cola Cat popup (no audio)
 const colaCatNode = document.getElementById('colaCatEntity');
 if (colaCatNode) {
+  const wp = new THREE.Vector3();
+  colaCatNode.getWorldPosition(wp);
+
   const e = document.createElement('a-entity');
   e.classList.add('trigger-popup', 'triggerable');
   e.dataset.radius = 2.0;
-  e.setAttribute('position', '2.814 1.2 4.785');
-  e.setAttribute('popup-video-hud', 'loops:1; side:left; src:assets/video/cola.mp4; audio:cola');
+
+  // позиция в мировых координатах модели
+  e.setAttribute('position', `${wp.x} ${wp.y} ${wp.z}`);
+
+  // без audio, чтобы не вызывался sound.playSound()
+  e.setAttribute(
+    'popup-video-hud',
+    'loops:1; hysteresis:0.2; side:left; src:assets/video/cola.mp4'
+  );
+
+  // без звука — без setAttribute('sound', ...)
   scene.appendChild(e);
 }
+
 
       const taverna=findNodeByName(root,'taverna');
       if (taverna) makeAtNode(taverna,'trigger-reveal','reveal-node-rot-fade','targetName:gyros; spinDegPerSec:60; lifeMs:15000; fadeMs:800; soundId:gyrosAudio', 2.0);
