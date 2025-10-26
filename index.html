@@ -273,7 +273,7 @@
   <a-entity id="streetEntity" gltf-model="#world" position="0 0 0"></a-entity>
   <a-entity id="colaCatEntity" 
           gltf-model="#colaCat"
-          position="2.814 1.1 4.785"
+          position="2.814 1 4.785"
           scale="1 1 1"
           rotation="0 180 0">
 </a-entity>
@@ -848,8 +848,8 @@ AFRAME.registerComponent('plane-video-once',{
     const movingTrigs=document.getElementsByClassName('trigger-moving');
 
     ctx.clearRect(0,0,c.width,c.height);
-    ctx.lineWidth=1; ring(R,0.25); ring(R*0.66,0.18); ring(R*0.33,0.14);
-    ctx.fillStyle='#fff'; ctx.beginPath(); ctx.arc(cx,cy,Math.max(2,R*0.02),0,Math.PI*2); ctx.fill();
+    ctx.lineWidth=2.5; ring(R,0.25); ring(R*0.66,0.18); ring(R*0.33,0.14);
+    ctx.fillStyle='#fff'; ctx.beginPath(); ctx.arc(cx,cy,Math.max(3,R*0.03),0,Math.PI*2); ctx.fill();
 
     const worldNorth=new THREE.Vector3(0,0,-1);
     const nx=worldNorth.dot(tmpRight), nz=worldNorth.dot(tmpFwd);
@@ -1036,35 +1036,31 @@ AFRAME.registerComponent('trigger-director',{
         {name: 'tree',   radius: 3.0, side: 'left',  src: 'assets/video/tree.mp4', audioId: 'treeAudio'},
       ];
       popups.forEach(p => {
-        const node = findNodeByName(root, p.name);
-        if (node) {
-          const e = makeAtNode(node, 'trigger-popup', 'popup-video-hud', `loops:${defLoops}; hysteresis:0.2; side:${p.side}; src:${p.src}; audio:${p.name}`, p.radius);
-          e.setAttribute('sound', `src:#${p.audioId}; positional:false`);
-        }
-      });
-// Cola Cat popup (no audio)
+  const node = findNodeByName(root, p.name);
+  if (node) {
+    const e = makeAtNode(
+      node,
+      'trigger-popup',
+      'popup-video-hud',
+      `loops:${defLoops}; hysteresis:0.2; side:${p.side}; src:${p.src}; audio:${p.name}`,
+      p.radius
+    );
+    e.setAttribute('sound', `src:#${p.audioId}; positional:false`);
+  }
+});
+
+// Cola cat popup — без звука
 const colaCatNode = document.getElementById('colaCatEntity');
 if (colaCatNode) {
   const wp = new THREE.Vector3();
   colaCatNode.getWorldPosition(wp);
-
   const e = document.createElement('a-entity');
   e.classList.add('trigger-popup', 'triggerable');
   e.dataset.radius = 2.0;
-
-  // позиция в мировых координатах модели
   e.setAttribute('position', `${wp.x} ${wp.y} ${wp.z}`);
-
-  // без audio, чтобы не вызывался sound.playSound()
-  e.setAttribute(
-    'popup-video-hud',
-    'loops:1; hysteresis:0.2; side:left; src:assets/video/cola.mp4'
-  );
-
-  // без звука — без setAttribute('sound', ...)
+  e.setAttribute('popup-video-hud', 'loops:1; hysteresis:0.2; side:left; src:assets/video/cola.mp4');
   scene.appendChild(e);
 }
-
 
       const taverna=findNodeByName(root,'taverna');
       if (taverna) makeAtNode(taverna,'trigger-reveal','reveal-node-rot-fade','targetName:gyros; spinDegPerSec:60; lifeMs:15000; fadeMs:800; soundId:gyrosAudio', 2.0);
