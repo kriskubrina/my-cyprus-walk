@@ -257,8 +257,8 @@
 
   <a-entity id="sky" geometry="primitive: sphere; radius: 5000; segmentsWidth: 64; segmentsHeight: 20; thetaLength: 180" material="shader: flat; src: #skyTex; side: back; height: 2048; width: 2048"></a-entity>
 
-  <a-entity light="type: ambient; intensity: 0.35"></a-entity>
-  <a-entity light="type: directional; intensity: 0.7" position="2 4 2"></a-entity>
+  <a-entity light="type: ambient; intensity: 0.5"></a-entity>
+  <a-entity light="type: directional; intensity: 1" position="2 4 2"></a-entity>
 
   <a-entity id="rig">
     <a-entity id="player" camera="near:0.01; far:10000"
@@ -273,7 +273,7 @@
   <a-entity id="streetEntity" gltf-model="#world" position="0 0 0"></a-entity>
   <a-entity id="colaCatEntity" 
           gltf-model="#colaCat"
-          position="-2 0 4.2"
+          position="2.814 1.2 4.785"
           scale="1 1 1"
           rotation="0 180 0">
 </a-entity>
@@ -1048,9 +1048,8 @@ if (colaCatNode) {
   const e = document.createElement('a-entity');
   e.classList.add('trigger-popup', 'triggerable');
   e.dataset.radius = 2.0;
-  e.setAttribute('position', '-2 0 4.2');
+  e.setAttribute('position', '2.814 1.2 4.785');
   e.setAttribute('popup-video-hud', 'loops:1; side:left; src:assets/video/cola.mp4; audio:cola');
-  e.setAttribute('sound', 'src:#pharmaAudio; positional:false'); // можешь сменить трек при желании
   scene.appendChild(e);
 }
 
