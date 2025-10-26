@@ -323,17 +323,7 @@ const boot  = document.getElementById('boot');
 const cassetteHint = document.getElementById('cassette-hint');
 const cassetteRing = document.getElementById('cassette-ring');
     // улучшенная эмуляция клика по кассете (если модель ещё не загрузилась)
-  function emulateCassetteClick(retry = 0) {
-    const clickables = document.querySelectorAll('.clickable');
-    if (clickables.length > 0) {
-      clickables[0].dispatchEvent(new Event('click', { bubbles: true }));
-      console.log('📼 Cassette clicked by gamepad');
-    } else if (retry < 10) {
-      setTimeout(() => emulateCassetteClick(retry + 1), 300);
-    } else {
-      console.warn('⚠️ No clickable cassette found after retries');
-    }
-  }
+
 
 
 function whenModelReady(cb){
@@ -1413,7 +1403,18 @@ prevRight = rightPressed;
 
     // кнопки вне about
     if (btnY && !prevY) toggleAbout();
-    if (btnX && !prevX) emulateCassetteClick(0);
+if (btnX && !prevX) {
+  const cassette = document.querySelector('.clickable');
+  if (cassette) {
+    cassette.dispatchEvent(new Event('click', { bubbles: true }));
+    console.log('📼 Cassette clicked via gamepad X');
+  } else {
+    console.warn('⚠️ Cassette clickable not found');
+  }
+}
+prevX = btnX;
+prevX = btnX;
+
     prevY = btnY;
     prevX = btnX;
 
