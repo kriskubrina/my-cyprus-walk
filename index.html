@@ -1526,7 +1526,18 @@ window.addEventListener('gamepadconnected', e => {
       }
     }
   }, 150);
+});window.addEventListener('keydown', resumeSceneAudioContext);
+window.addEventListener('gamepadconnected', () => {
+  const resume = setInterval(() => {
+    if (audioCtx && audioCtx.state === 'suspended') {
+      audioCtx.resume().then(() => {
+        console.log('🎧 AudioContext resumed by gamepad');
+        clearInterval(resume);
+      });
+    }
+  }, 500);
 });
+
 
 </script>
 
