@@ -168,9 +168,11 @@
       .about-panel { height: var(--panel-height-mobile); }
       .about-content { font-size: 2.2vh; }
     }/* компенсируем безопасную зону (notch) на айфонах */
-#about-trigger,
-#cassette-ring {
+#about-trigger{
   top: calc(24px + env(safe-area-inset-top));
+}
+#cassette-ring {
+  top: calc(12px + env(safe-area-inset-top));
 }
 
   </style>
