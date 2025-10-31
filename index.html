@@ -99,7 +99,7 @@
 
     #about-trigger {
       position: fixed;
-      top: 12px; left: 50%; transform: translateX(-50%);
+      top: 24px; left: 50%; transform: translateX(-50%);
       z-index: 1000;
       background: transparent;
       border: 1px solid #fff;
@@ -406,7 +406,7 @@ document.querySelector('a-scene').addEventListener('loaded', ()=>{
 });
 
 /* ========== размеры HUD (радар+попап) ========== */
-const JOY_SIZE=160; const RADAR_SIZE = (!isTouch ? 400 : JOY_SIZE); const RADAR_MARGIN=12;
+const JOY_SIZE=160; const RADAR_SIZE = (!isTouch ? 400 : JOY_SIZE); const RADAR_MARGIN=24;
 (function(){
   const radar=document.getElementById('radar'); const c=document.getElementById('radarCanvas');
   radar.style.width=RADAR_SIZE+'px'; radar.style.height=RADAR_SIZE+'px'; c.width=RADAR_SIZE; c.height=RADAR_SIZE;
