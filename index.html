@@ -320,11 +320,21 @@ const cassetteRing = document.getElementById('cassette-ring');
 
 
 
-function whenModelReady(cb){
-  const run = () => { const root = streetEntity.getObject3D('mesh'); if (root) cb(root); };
+function whenModelReady(cb) {
+  const run = () => {
+    const root = streetEntity.getObject3D('mesh');
+    if (root) cb(root);
+  };
   if (streetEntity.hasLoaded && streetEntity.getObject3D('mesh')) run();
-  else streetEntity.addEventListener('model-loaded', run, {once:true});
+  else streetEntity.addEventListener('model-loaded', run, { once: true });
 }
+
+// 👇 добавляем это сразу после объявления функции
+whenModelReady(root => {
+  const cassetteNode = findNodeByName(root, 'cassette');
+  if (cassetteNode) cassetteNode.visible = false;
+});
+
 function findNodeByName(root,name){
   const t=name.toLowerCase(); let f=null;
   root.traverse(n=>{ if(f) return; const nm=(n.name||'').toLowerCase(); if(nm===t || nm.startsWith(t)) f=n; });
