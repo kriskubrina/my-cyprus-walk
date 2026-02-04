@@ -972,94 +972,87 @@ AFRAME.registerComponent('proximity-checker', {
         }
     }
 });
+AFRAME.registerComponent('moving-object-logic', {
+  init: function () {
+    this.triggered = false;
+    this.speed = 0.6;
 
-this.el.addEventListener('model-loaded', (e) => {
-  try {
-    const model = e.detail.model;
-
-    const emissiveIntensity = 1.2; // подстрой (0.2–2.0 обычно ок)
-
-    model.traverse((n) => {
-      if (!n.isMesh) return;
-
-      const mats = Array.isArray(n.material) ? n.material : [n.material];
-      mats.forEach((mat) => {
-        if (!mat) return;
-
-        // glTF чаще всего MeshStandardMaterial / MeshPhysicalMaterial
-        if ('emissive' in mat) {
-          // 1) пусть каждый материал "светится" своим цветом/текстурой
-          // если есть map (baseColorTexture), используем её же как emissiveMap
-          if (mat.map && !mat.emissiveMap) {
-            mat.emissiveMap = mat.map;
-          }
-
-          // 2) emissive белый = не перекрашиваем, а "поджигаем" эммиссив-карту
-          mat.emissive.set(0xffffff);
-          mat.emissiveIntensity = emissiveIntensity;
-
-          // важно: чтобы эммиссив карта реально участвовала
-          mat.needsUpdate = true;
-        }
-      });
-    });
-
-    // анимация как была
-    if (model.animations && model.animations.length) {
-      this.mixer = new THREE.AnimationMixer(model);
-      const action = this.mixer.clipAction(model.animations[0]);
-      action.play();
-    }
-  } catch (err) {
-    console.error('Error setting emissive:', err);
-  }
-}, { once: true });
-
-
-this.el.addEventListener('player-enter', () => {
-  if (!this.triggered) {
-    this.triggered = true;
-    this.el.setAttribute('visible', true);
+    // маршрут (оставь твои координаты, если они другие)
+    this.waypoints = [
+      new THREE.Vector3(-2.862, 1.6, 3.478),
+      new THREE.Vector3( 0.000, 1.6, 3.478),
+      new THREE.Vector3( 0.000, 1.6, 0.000),
+      new THREE.Vector3(-2.862, 1.6, 0.000),
+    ];
     this.targetIndex = 0;
 
-    // ✅ звук как у собаки
-    resumeSceneAudioContext();
-    try { this.soundEl?.components.sound.stopSound(); } catch(_){}
-    setTimeout(() => {
-      try { this.soundEl?.components.sound.playSound(); }
-      catch(e){ console.error("Could not play moving cat sound:", e); }
-    }, 200);
+    // звук (если хочешь позиционный — можно поменять positional:true)
+    this.soundEl = document.createElement('a-entity');
+    this.soundEl.setAttribute('sound', 'src:#movingCatAudio; positional:false; volume:1');
+    this.el.sceneEl.appendChild(this.soundEl);
+
+    // анимации + emissive (внутри компонента — это важно)
+    this.el.addEventListener('model-loaded', (e) => {
+      const model = e.detail.model;
+
+      // emissive “по своим цветам”: emissiveMap = map
+      const emissiveIntensity = 1.2;
+      model.traverse((n) => {
+        if (!n.isMesh) return;
+        const mats = Array.isArray(n.material) ? n.material : [n.material];
+        mats.forEach((mat) => {
+          if (!mat) return;
+          if ('emissive' in mat) {
+            if (mat.map && !mat.emissiveMap) mat.emissiveMap = mat.map;
+            mat.emissive?.set?.(0xffffff);
+            mat.emissiveIntensity = emissiveIntensity;
+            mat.needsUpdate = true;
+          }
+        });
+      });
+
+      if (model.animations && model.animations.length) {
+        this.mixer = new THREE.AnimationMixer(model);
+        this.mixer.clipAction(model.animations[0]).play();
+      }
+    });
+
+    // старт по триггеру
+    this.el.addEventListener('player-enter', () => {
+      if (this.triggered) return;
+      this.triggered = true;
+      this.el.setAttribute('visible', true);
+      this.targetIndex = 0;
+
+      resumeSceneAudioContext();
+      try { this.soundEl.components.sound.stopSound(); } catch(_) {}
+      setTimeout(() => {
+        try { this.soundEl.components.sound.playSound(); } catch(e) {}
+      }, 200);
+    });
+  },
+
+  tick: function (time, deltaTime) {
+    if (this.mixer) this.mixer.update(deltaTime / 1000);
+    if (this.triggered) this.move(deltaTime);
+  },
+
+  move: function (deltaTime) {
+    const current = this.el.object3D.position;
+    const target = this.waypoints[this.targetIndex];
+    const dist = current.distanceTo(target);
+
+    if (dist < 0.1) {
+      this.targetIndex = (this.targetIndex + 1) % this.waypoints.length;
+    }
+
+    const next = this.waypoints[this.targetIndex];
+    const dir = next.clone().sub(current).normalize();
+    const step = this.speed * (deltaTime / 1000);
+    current.add(dir.multiplyScalar(step));
   }
 });
 
-    },
-    tick: function (time, deltaTime) {
-        if (this.mixer) {
-            this.mixer.update(deltaTime / 1000);
-        }
-        if (this.triggered) {
-            this.move(deltaTime);
-        }
-    },
-    move: function (deltaTime) {
-        if (this.targetIndex === -1) return;
-
-        const targetPosition = this.waypoints[this.targetIndex];
-        const currentPosition = this.el.object3D.position;
-        const distanceToTarget = currentPosition.distanceTo(targetPosition);
-
-        if (distanceToTarget < 0.1) {
-            const yRotation = new THREE.Euler(0, -Math.PI / 2, 0);
-            this.el.object3D.quaternion.multiply(new THREE.Quaternion().setFromEuler(yRotation));
-            this.targetIndex = (this.targetIndex + 1) % this.waypoints.length;
-        }
-
-        const nextTargetPosition = this.waypoints[this.targetIndex];
-        const direction = nextTargetPosition.clone().sub(currentPosition).normalize();
-        const moveDistance = this.speed * (deltaTime / 1000);
-        this.el.object3D.position.add(direction.multiplyScalar(moveDistance));
-    }
-});
 
 /* ========== дирижёр триггеров ========== */
 AFRAME.registerComponent('trigger-director',{
