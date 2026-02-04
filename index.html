@@ -973,68 +973,45 @@ AFRAME.registerComponent('proximity-checker', {
     }
 });
 
-/* ========== moving object ========== */
-AFRAME.registerComponent('moving-object-logic', {
-    schema: {},
-    init: function () {
-        this.triggered = false;
-        this.mixer = null;
-        this.spawnPoint = new THREE.Vector3(-3.789, 0, 3.585);
-        this.waypoints = [
-            new THREE.Vector3(-16.632, 0, 4.002),
-            new THREE.Vector3(-17.379, 0, -0.914),
-            new THREE.Vector3(15.093, 0, -4.741),
-            new THREE.Vector3(15.820, 0, -0.646)
-        ];
-        this.speed = 1;
-        this.targetIndex = -1;
-this.soundEl = null;
-
-        this.el.object3D.position.copy(this.spawnPoint);
-        this.el.setAttribute('visible', false);
-// ✅ positional sound entity (как у dog)
-const s = document.createElement('a-entity');
-s.setAttribute('sound', 'src:#movingCatAudio; positional:true; refDistance:2; maxDistance:12; rolloffFactor:1');
-this.el.appendChild(s);
-this.soundEl = s;
-
-      this.el.addEventListener('model-loaded', (e) => {
+this.el.addEventListener('model-loaded', (e) => {
   try {
     const model = e.detail.model;
 
-    // ✅ EMISSIVE (добавили эммиссию как у остальных)
-    const emissiveColor = new THREE.Color('#ffffff'); // подстрой цвет
-    const emissiveIntensity = 0.9; // подстрой силу
+    const emissiveIntensity = 1.2; // подстрой (0.2–2.0 обычно ок)
 
-model.traverse((n) => {
-  if (!n.isMesh) return;
+    model.traverse((n) => {
+      if (!n.isMesh) return;
 
-  const mats = Array.isArray(n.material) ? n.material : [n.material];
-  for (const mat of mats) {
-    if (!mat) continue;
+      const mats = Array.isArray(n.material) ? n.material : [n.material];
+      mats.forEach((mat) => {
+        if (!mat) return;
 
-    // если есть базовая текстура — используем её как эмиссивную
-    if ('emissive' in mat) {
-      mat.emissive = new THREE.Color(1, 1, 1); // белый, чтобы не перекрашивать текстуру
-      if (!mat.emissiveMap) {
-        // чаще всего в glTF это mat.map (baseColorTexture)
-        if (mat.map) mat.emissiveMap = mat.map;
-      }
-      mat.emissiveIntensity = 0.9; // подстрой
-      mat.needsUpdate = true;
-    }
-  }
-});
+        // glTF чаще всего MeshStandardMaterial / MeshPhysicalMaterial
+        if ('emissive' in mat) {
+          // 1) пусть каждый материал "светится" своим цветом/текстурой
+          // если есть map (baseColorTexture), используем её же как emissiveMap
+          if (mat.map && !mat.emissiveMap) {
+            mat.emissiveMap = mat.map;
+          }
 
+          // 2) emissive белый = не перекрашиваем, а "поджигаем" эммиссив-карту
+          mat.emissive.set(0xffffff);
+          mat.emissiveIntensity = emissiveIntensity;
 
-    // ✅ анимация как была
+          // важно: чтобы эммиссив карта реально участвовала
+          mat.needsUpdate = true;
+        }
+      });
+    });
+
+    // анимация как была
     if (model.animations && model.animations.length) {
       this.mixer = new THREE.AnimationMixer(model);
       const action = this.mixer.clipAction(model.animations[0]);
       action.play();
     }
   } catch (err) {
-    console.error('Error setting up animation mixer:', err);
+    console.error('Error setting emissive:', err);
   }
 }, { once: true });
 
