@@ -902,18 +902,29 @@ AFRAME.registerComponent('plane-video-once',{
   }, INTERVAL);
 })();
 
-/* ========== ограничение прямоугольником: X[-25,25], Z[-10,10] ========== */
-AFRAME.registerComponent('clamp-rect',{
-  schema:{ minX:{default:-35}, maxX:{default:35}, minZ:{default:-20}, maxZ:{default:20} },
-  tick(){
-    const p = rig.object3D.position;
+AFRAME.registerComponent('clamp-rect-simple', {
+  schema: {
+    minX: { default: -50 },
+    maxX: { default:  50 },
+    minZ: { default: -50 },
+    maxZ: { default:  50 }
+  },
+  tick: function () {
+    // clamp того, кто реально перемещается
+    const mover = (isTouch ? rig : camEl).object3D;
+    const p = mover.position;
+
     if (p.x < this.data.minX) p.x = this.data.minX;
     if (p.x > this.data.maxX) p.x = this.data.maxX;
     if (p.z < this.data.minZ) p.z = this.data.minZ;
     if (p.z > this.data.maxZ) p.z = this.data.maxZ;
   }
 });
-document.querySelector('a-scene').setAttribute('clamp-rect','minX:-35; maxX:35; minZ:-20; maxZ:20');
+
+// включаем
+document.querySelector('a-scene')
+  .setAttribute('clamp-rect-simple', 'minX:-50; maxX:50; minZ:-50; maxZ:50');
+
 
 /* ========== Proximity Checker ========== */
 AFRAME.registerComponent('proximity-checker', {
@@ -995,18 +1006,26 @@ this.soundEl = s;
     const emissiveColor = new THREE.Color('#ffffff'); // подстрой цвет
     const emissiveIntensity = 0.9; // подстрой силу
 
-    model.traverse((n) => {
-      if (!n.isMesh) return;
-      const mat = n.material;
-      if (!mat) return;
+model.traverse((n) => {
+  if (!n.isMesh) return;
 
-      // если материал поддерживает emissive — включаем
-      if ('emissive' in mat) {
-        mat.emissive = emissiveColor;
-        mat.emissiveIntensity = emissiveIntensity;
-        mat.needsUpdate = true;
+  const mats = Array.isArray(n.material) ? n.material : [n.material];
+  for (const mat of mats) {
+    if (!mat) continue;
+
+    // если есть базовая текстура — используем её как эмиссивную
+    if ('emissive' in mat) {
+      mat.emissive = new THREE.Color(1, 1, 1); // белый, чтобы не перекрашивать текстуру
+      if (!mat.emissiveMap) {
+        // чаще всего в glTF это mat.map (baseColorTexture)
+        if (mat.map) mat.emissiveMap = mat.map;
       }
-    });
+      mat.emissiveIntensity = 0.9; // подстрой
+      mat.needsUpdate = true;
+    }
+  }
+});
+
 
     // ✅ анимация как была
     if (model.animations && model.animations.length) {
