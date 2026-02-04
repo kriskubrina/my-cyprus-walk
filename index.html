@@ -251,8 +251,11 @@
     <!-- сцена -->
     <a-asset-item id="world" src="assets/models/limassol-walk.glb"></a-asset-item>
     <a-asset-item id="movingObject" src="assets/models/moving.glb"></a-asset-item>
+<<<<<<< Updated upstream
    
 
+=======
+>>>>>>> Stashed changes
 
     <!-- HUD-видео и общий мобильный видео-элемент для плейнов -->
     <video id="popupVideo" preload="metadata" playsinline webkit-playsinline crossorigin="anonymous"></video>
@@ -908,6 +911,121 @@ AFRAME.registerComponent('clamp-rect',{
   }
 });
 document.querySelector('a-scene').setAttribute('clamp-rect','minX:-35; maxX:35; minZ:-20; maxZ:20');
+
+/* ========== Proximity Checker ========== */
+AFRAME.registerComponent('proximity-checker', {
+    schema: {
+        interval: { default: 10 } // Check every 10 ticks
+    },
+    init: function () {
+        this.triggers = [];
+        this.tickCounter = 0;
+        // The querySelectorAll needs to run after the scene is loaded.
+        // We'll populate it on the first tick.
+    },
+    tick: function () {
+        this.tickCounter++;
+        if (this.tickCounter % this.data.interval !== 0) return;
+
+        if (this.triggers.length === 0) {
+            // First time, or if new triggers are added.
+            const triggerEls = Array.from(this.el.sceneEl.querySelectorAll('.triggerable'));
+            this.triggers = triggerEls.map(el => ({
+                el: el,
+                radius: parseFloat(el.dataset.radius) || 2.0, // Default radius
+                inZone: false
+            }));
+        }
+
+        const playerPos = this.el.object3D.getWorldPosition(new THREE.Vector3());
+
+        for (const trigger of this.triggers) {
+            const triggerPos = trigger.el.object3D.getWorldPosition(new THREE.Vector3());
+            const distance = playerPos.distanceTo(triggerPos);
+            const isInZoneNow = distance <= trigger.radius;
+
+            if (isInZoneNow && !trigger.inZone) {
+                trigger.inZone = true;
+                const targetId = trigger.el.dataset.targetId;
+                const targetEl = targetId ? document.getElementById(targetId) : trigger.el;
+                if (targetEl) targetEl.emit('player-enter');
+            } else if (!isInZoneNow && trigger.inZone) {
+                trigger.inZone = false;
+                const targetId = trigger.el.dataset.targetId;
+                const targetEl = targetId ? document.getElementById(targetId) : trigger.el;
+                if (targetEl) targetEl.emit('player-leave');
+            }
+        }
+    }
+});
+
+/* ========== moving object ========== */
+AFRAME.registerComponent('moving-object-logic', {
+    schema: {},
+    init: function () {
+        this.triggered = false;
+        this.mixer = null;
+        this.spawnPoint = new THREE.Vector3(-3.789, 0, 3.585);
+        this.waypoints = [
+            new THREE.Vector3(-16.632, 0, 4.002),
+            new THREE.Vector3(-17.379, 0, -0.914),
+            new THREE.Vector3(15.093, 0, -4.741),
+            new THREE.Vector3(15.820, 0, -0.646)
+        ];
+        this.speed = 1;
+        this.targetIndex = -1;
+
+        this.el.object3D.position.copy(this.spawnPoint);
+        this.el.setAttribute('visible', false);
+
+        this.el.addEventListener('model-loaded', (e) => {
+            try {
+                const model = e.detail.model;
+                if (model.animations && model.animations.length) {
+                    this.mixer = new THREE.AnimationMixer(model);
+                    const action = this.mixer.clipAction(model.animations[0]);
+                    action.play();
+                }
+            } catch (err) {
+                console.error('Error setting up animation mixer:', err);
+            }
+        }, { once: true });
+
+        this.el.addEventListener('player-enter', () => {
+            if (!this.triggered) {
+                this.triggered = true;
+                this.el.setAttribute('visible', true);
+                this.targetIndex = 0;
+            }
+        });
+    },
+    tick: function (time, deltaTime) {
+        if (this.mixer) {
+            this.mixer.update(deltaTime / 1000);
+        }
+        if (this.triggered) {
+            this.move(deltaTime);
+        }
+    },
+    move: function (deltaTime) {
+        if (this.targetIndex === -1) return;
+
+        const targetPosition = this.waypoints[this.targetIndex];
+        const currentPosition = this.el.object3D.position;
+        const distanceToTarget = currentPosition.distanceTo(targetPosition);
+
+        if (distanceToTarget < 0.1) {
+            const yRotation = new THREE.Euler(0, -Math.PI / 2, 0);
+            this.el.object3D.quaternion.multiply(new THREE.Quaternion().setFromEuler(yRotation));
+            this.targetIndex = (this.targetIndex + 1) % this.waypoints.length;
+        }
+
+        const nextTargetPosition = this.waypoints[this.targetIndex];
+        const direction = nextTargetPosition.clone().sub(currentPosition).normalize();
+        const moveDistance = this.speed * (deltaTime / 1000);
+        this.el.object3D.position.add(direction.multiplyScalar(moveDistance));
+    }
+});
 
 /* ========== Proximity Checker ========== */
 AFRAME.registerComponent('proximity-checker', {
