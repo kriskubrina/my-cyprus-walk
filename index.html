@@ -260,6 +260,7 @@
 
     <!-- Аудио -->
     <audio id="amb"        src="assets/audio/Analog_Mannequin%20Milk%20Cassette%20X.mp3%20-%20Demo.mp3" preload="auto" crossorigin="anonymous"></audio>
+<audio id="movingCatAudio" src="assets/audio/cat.mp3" preload="auto" crossorigin="anonymous"></audio>
     <audio id="dogAudio"   src="assets/audio/dog.mp3"   preload="auto" crossorigin="anonymous"></audio>
     <audio id="gyrosAudio" src="assets/audio/gyros.mp3" preload="auto" crossorigin="anonymous"></audio>
     <audio id="clip1Audio" src="assets/audio/clip1.mp3" preload="auto" crossorigin="anonymous"></audio>
@@ -976,30 +977,65 @@ AFRAME.registerComponent('moving-object-logic', {
         ];
         this.speed = 1;
         this.targetIndex = -1;
+this.soundEl = null;
 
         this.el.object3D.position.copy(this.spawnPoint);
         this.el.setAttribute('visible', false);
+// ✅ positional sound entity (как у dog)
+const s = document.createElement('a-entity');
+s.setAttribute('sound', 'src:#movingCatAudio; positional:true; refDistance:2; maxDistance:12; rolloffFactor:1');
+this.el.appendChild(s);
+this.soundEl = s;
 
-        this.el.addEventListener('model-loaded', (e) => {
-            try {
-                const model = e.detail.model;
-                if (model.animations && model.animations.length) {
-                    this.mixer = new THREE.AnimationMixer(model);
-                    const action = this.mixer.clipAction(model.animations[0]);
-                    action.play();
-                }
-            } catch (err) {
-                console.error('Error setting up animation mixer:', err);
-            }
-        }, { once: true });
+      this.el.addEventListener('model-loaded', (e) => {
+  try {
+    const model = e.detail.model;
 
-        this.el.addEventListener('player-enter', () => {
-            if (!this.triggered) {
-                this.triggered = true;
-                this.el.setAttribute('visible', true);
-                this.targetIndex = 0;
-            }
-        });
+    // ✅ EMISSIVE (добавили эммиссию как у остальных)
+    const emissiveColor = new THREE.Color('#ffffff'); // подстрой цвет
+    const emissiveIntensity = 0.9; // подстрой силу
+
+    model.traverse((n) => {
+      if (!n.isMesh) return;
+      const mat = n.material;
+      if (!mat) return;
+
+      // если материал поддерживает emissive — включаем
+      if ('emissive' in mat) {
+        mat.emissive = emissiveColor;
+        mat.emissiveIntensity = emissiveIntensity;
+        mat.needsUpdate = true;
+      }
+    });
+
+    // ✅ анимация как была
+    if (model.animations && model.animations.length) {
+      this.mixer = new THREE.AnimationMixer(model);
+      const action = this.mixer.clipAction(model.animations[0]);
+      action.play();
+    }
+  } catch (err) {
+    console.error('Error setting up animation mixer:', err);
+  }
+}, { once: true });
+
+
+this.el.addEventListener('player-enter', () => {
+  if (!this.triggered) {
+    this.triggered = true;
+    this.el.setAttribute('visible', true);
+    this.targetIndex = 0;
+
+    // ✅ звук как у собаки
+    resumeSceneAudioContext();
+    try { this.soundEl?.components.sound.stopSound(); } catch(_){}
+    setTimeout(() => {
+      try { this.soundEl?.components.sound.playSound(); }
+      catch(e){ console.error("Could not play moving cat sound:", e); }
+    }, 200);
+  }
+});
+
     },
     tick: function (time, deltaTime) {
         if (this.mixer) {
