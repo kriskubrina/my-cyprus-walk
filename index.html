@@ -260,7 +260,7 @@
 
     <!-- Аудио -->
     <audio id="amb"        src="assets/audio/Analog_Mannequin%20Milk%20Cassette%20X.mp3%20-%20Demo.mp3" preload="auto" crossorigin="anonymous"></audio>
-<audio id="catMoveAudio" src="assets/audio/cat_move.mp3" preload="auto" crossorigin="anonymous"></audio>
+<audio id="catMoveAudio" src="assets/audio/cat.mp3" preload="auto" crossorigin="anonymous"></audio>
     <audio id="dogAudio"   src="assets/audio/dog.mp3"   preload="auto" crossorigin="anonymous"></audio>
     <audio id="gyrosAudio" src="assets/audio/gyros.mp3" preload="auto" crossorigin="anonymous"></audio>
     <audio id="clip1Audio" src="assets/audio/clip1.mp3" preload="auto" crossorigin="anonymous"></audio>
@@ -1000,7 +1000,7 @@ AFRAME.registerComponent('moving-object-logic', {
         this.el.setAttribute('visible', false);
 
         // --- helper: включить emissive на всех мешах модели
-        this.applyEmission = (model, colorHex = 0x66ccff, intensity = 1.6) => {
+        this.applyEmission = (model, intensity = 0.8) => {
             model.traverse((n) => {
                 if (!n.isMesh) return;
 
@@ -1009,7 +1009,7 @@ AFRAME.registerComponent('moving-object-logic', {
                     if (!m) return;
                     // работаем только если материал поддерживает emissive
                     if ('emissive' in m) {
-                        m.emissive = new THREE.Color(colorHex);
+                        if (m.color) m.emissive.copy(m.color);
                         if ('emissiveIntensity' in m) m.emissiveIntensity = intensity;
                         m.needsUpdate = true;
                     }
@@ -1029,7 +1029,7 @@ AFRAME.registerComponent('moving-object-logic', {
                 }
 
                 // emission — добавлено
-                this.applyEmission(model, 0x66ccff, 1.6);
+                this.applyEmission(model);
 
             } catch (err) {
                 console.error('Error setting up animation mixer:', err);
