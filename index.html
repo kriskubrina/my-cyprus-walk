@@ -1682,7 +1682,7 @@ window.addEventListener('gamepadconnected', () => {
     ],
     poleHeight: 6.2,
     lampSound: 'assets/audio/light_fin.mp3',
-    finale: { waitAfterLast: 1.8, duskSec: 6, lampSec: 5, textAt: 5.5, reloadAfterText: 16.5, fadeOthersSec: 2.5 },
+    finale: { waitAfterLast: 3.0, duskSec: 6, lampSec: 5, textAt: 5.5, reloadAfterText: 16.5, fadeOthersSec: 6 },
     taskHintSec: 9,
     // таракан: сидит на дороге, при подходе удирает зигзагом
     roach: { x: 8.0, z: 0.8, radius: 2.0, size: 0.24, scare: 1.9, calm: 3.4, roam: 3.2, speed: 2.4, flyChance: 0.3, hopChance: 0.4, hopAboveEyes: 0.3, sound: 'assets/audio/cockroach_cut.mp3' },
@@ -2426,7 +2426,7 @@ window.addEventListener('gamepadconnected', () => {
     const fs = Fn.fadeOthersSec; window.__finale = true;       // новые точки в финале уже не срабатывают
     let mop0 = null;
     const fadeOthers = t => {
-      const u = Math.min(1, t / fs), f = (1 - u) * (1 - u);
+      const u = Math.min(1, t / fs), f = 0.5 + 0.5 * Math.cos(Math.PI * u);      // сначала почти не слышно, что затухает, потом мягко в ноль
       try { const L = scene.audioListener; if (L) { const g = L.gain.gain; g.cancelScheduledValues(0); g.value = f; } } catch (_) {}
       try { if (mopedGain) { const g = mopedGain.gain; if (mop0 === null) mop0 = g.value; g.cancelScheduledValues(0); g.value = mop0 * f; } } catch (_) {}
       try {
